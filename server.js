@@ -219,17 +219,17 @@ function switchMap(socket, newMapId, x, z) {
 
 // --- GAME LOOP ---
 setInterval(() => {
-    const updates = {};
+    const updates = {}; // MapID -> Array de Monstros
     const deadMonsters = [];
 
+    // Loop dos Monstros (MANTENHA ISSO)
     Object.values(monsters).forEach(m => {
         if (m.hp > 0) { 
-            // AQUI É A MÁGICA: Passamos a função de ataque como callback
             m.update(100, onlinePlayers, {
                 onAttack: (monster, target) => handleMonsterAttack(monster, target)
             });
 
-            if(!updates[m.map]) updates[m.map] = [];
+            if(!updates[m.map]) updates[m.map] = []; // Cria como Array []
             updates[m.map].push({ 
                 id: m.id, type: m.type, position: m.position, 
                 rotation: m.rotation, animation: m.animation, hp: m.hp 
@@ -239,16 +239,23 @@ setInterval(() => {
         }
     });
 
+    // Loop de Monstros Mortos (MANTENHA ISSO)
     deadMonsters.forEach(id => {
         const m = monsters[id];
         if(m) { delete monsters[id]; io.to(m.map).emit('monster_dead', id); }
     });
 
+    // Envio dos Pacotes (MANTENHA ISSO)
     Object.keys(updates).forEach(mapId => {
         io.to(mapId).emit('monsters_update', updates[mapId]);
     });
     
+    // Respawn (MANTENHA ISSO)
     if(Math.random() < 0.05) spawnInitialMonsters();
+
+    // *** SE VOCÊ ADICIONOU O BLOCO "ATUALIZAÇÃO DOS PLAYERS" AQUI, APAGUE-O ***
+    // Não precisamos dele. O evento 'player_moved' já é disparado
+    // quando o cliente envia 'player_update' lá embaixo no código.
 
 }, 100);
 
@@ -323,25 +330,44 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('player_update', (data) => {
+socket.on('player_update', (data) => {
+        // Verifica se o player existe
         if (!onlinePlayers[socket.id]) return;
+
+        // --- LINHA QUE ESTAVA FALTANDO ---
         const mapConfig = MAP_CONFIG[socket.map];
+        // ---------------------------------
+        
+        // Segurança: Se por acaso o mapa não existir na config, para tudo
+        if (!mapConfig) return;
+
+        // Verificação de Limites (Anti-noclip básico)
         const limit = mapConfig.mapSize / 2;
         if (Math.abs(data.position.x) > limit || Math.abs(data.position.z) > limit) return;
 
+        // Atualiza estado no servidor
         socket.position = data.position;
         socket.rotation = data.rotation;
         socket.animation = data.animation;
         
+        // Envia para os outros (COM O USERNAME PARA CORRIGIR O BUG VISUAL)
         socket.broadcast.to(socket.map).emit('player_moved', { 
-            id: socket.id, position: data.position, rotation: data.rotation, animation: data.animation 
+            id: socket.id, 
+            username: socket.username, 
+            position: data.position, 
+            rotation: data.rotation, 
+            animation: data.animation 
         });
 
+        // Checagem de Portais (A linha que estava dando erro era aqui dentro)
         if (mapConfig.portals) {
             mapConfig.portals.forEach(portal => {
                 const dx = socket.position.x - portal.x;
                 const dz = socket.position.z - portal.z;
-                if (Math.sqrt(dx*dx + dz*dz) < portal.radius) switchMap(socket, portal.targetMap, portal.targetX, portal.targetZ);
+                // Se pisou no portal, troca de mapa
+                if (Math.sqrt(dx*dx + dz*dz) < portal.radius) {
+                    switchMap(socket, portal.targetMap, portal.targetX, portal.targetZ);
+                }
             });
         }
     });

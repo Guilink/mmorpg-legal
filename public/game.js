@@ -154,24 +154,32 @@ socket.on('player_left', (id) => { if(otherPlayers[id]) { scene.remove(otherPlay
 
 socket.on('player_moved', d => {
     if(d.id === socket.id) return;
-    const p = otherPlayers[d.id];
-    if(p) {
-        // Quando chega um pacote novo:
-        // 1. A posição atual vira a "lastPos"
-        p.userData.lastPos.copy(p.position);
-        
-        // 2. A nova posição do pacote vira a "targetPos"
-        p.userData.targetPos.set(d.position.x, d.position.y, d.position.z);
-        
-        // 3. Mesma coisa para rotação
-        p.userData.lastRot = p.rotation.y;
-        p.userData.targetRot = d.rotation;
-        
-        // 4. Marca a hora exata que isso aconteceu
-        p.userData.moveStart = Date.now();
+    
+    // Se o player ainda não existe, crie-o (segurança)
+    if(!otherPlayers[d.id]) {
+        addOtherPlayer(d);
+        return;
+    }
 
-        // Animação
-        if(p.userData.current !== d.animation) playAnim(p, d.animation);
+    const p = otherPlayers[d.id];
+    
+    // 1. Atualiza Posição Alvo
+    p.userData.targetPos.set(d.position.x, d.position.y, d.position.z);
+    
+    // 2. Atualiza Rotação Alvo (Usando Quaternion para suavidade absoluta)
+    // Criamos um quaternion baseada na rotação Y enviada pelo server
+    const targetEuler = new THREE.Euler(0, d.rotation, 0, 'XYZ');
+    p.userData.targetQuat.setFromEuler(targetEuler);
+
+    // 3. Atualiza Estado de Animação do Servidor (Intenção)
+    p.userData.serverAnimation = d.animation; 
+    
+    // 4. Teletransporte de emergência
+    // Se o boneco estiver muito longe (> 5 metros), teletransporta instantaneamente
+    // para evitar que ele atravesse paredes correndo muito rápido para alcançar o alvo.
+    if (p.position.distanceTo(p.userData.targetPos) > 5.0) {
+        p.position.copy(p.userData.targetPos);
+        p.quaternion.copy(p.userData.targetQuat);
     }
 });
 
@@ -355,11 +363,26 @@ function loadMap(mapConfig, myData, players, mobs) {
     UI.loadingScreen.style.display = 'flex';
     UI.mapName.textContent = mapConfig.id.toUpperCase();
 
-    // Limpeza
+// --- LIMPEZA DE CENA (CRÍTICO) ---
     environmentLayer.clear(); 
-    Object.keys(otherPlayers).forEach(id => { scene.remove(otherPlayers[id]); delete otherPlayers[id]; });
-    Object.keys(monsters).forEach(id => { scene.remove(monsters[id]); delete monsters[id]; });
-    mapProps.forEach(p => scene.remove(p)); mapProps = [];
+    
+    // Remove jogadores antigos visualmente e da memória
+    Object.keys(otherPlayers).forEach(id => { 
+        scene.remove(otherPlayers[id]); 
+        delete otherPlayers[id]; 
+    });
+    otherPlayers = {}; // Força o objeto a ficar vazio
+
+    // Remove monstros antigos
+    Object.keys(monsters).forEach(id => { 
+        scene.remove(monsters[id]); 
+        delete monsters[id]; 
+    });
+    monsters = {}; // Força o objeto a ficar vazio
+
+    mapProps.forEach(p => scene.remove(p)); 
+    mapProps = [];
+    // ----------------------------------
     
     const loader = new THREE.GLTFLoader();
     let toLoad = 1; 
@@ -464,36 +487,53 @@ function setupAnimations(mesh, clips) {
 function playAnim(mesh, name) { if(mesh && mesh.userData.play) mesh.userData.play(name); }
 
 function addOtherPlayer(data) {
-    if(data.id === socket.id || data.username === myUsername || otherPlayers[data.id]) return;
+    // 1. Prevenção de Duplicidade: Se já existe, remove o antigo primeiro
+    if (otherPlayers[data.id]) {
+        scene.remove(otherPlayers[data.id]);
+        delete otherPlayers[data.id];
+    }
+    
+    // Não adiciona a si mesmo
+    if(data.id === socket.id) return; 
+
+    // Se o nome vier undefined (caso raro agora), usa um placeholder
+    const nameToShow = data.username || "Desconhecido";
+
     const loader = new THREE.GLTFLoader();
     loader.load('assets/heroi1.glb', gltf => {
+        // Verifica de novo se o player não foi adicionado enquanto carregava
+        if(otherPlayers[data.id]) {
+             scene.remove(otherPlayers[data.id]);
+        }
+
         const mesh = gltf.scene;
         mesh.userData.id = data.id; 
-        
-        // --- NOVO SISTEMA DE INTERPOLAÇÃO DE TEMPO ---
-        // Guardamos onde ele estava e para onde vai
-        mesh.userData.lastPos = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
+
+        // Configuração de Interpolação
         mesh.userData.targetPos = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
+        mesh.userData.targetQuat = new THREE.Quaternion();
+        mesh.userData.targetQuat.setFromEuler(new THREE.Euler(0, data.rotation, 0));
         
-        mesh.userData.lastRot = data.rotation;
-        mesh.userData.targetRot = data.rotation;
-        
-        mesh.userData.moveStart = Date.now(); // Quando começou o movimento
-        // ---------------------------------------------
+        mesh.userData.serverAnimation = data.animation || 'IDLE';
+        mesh.userData.currentAnimation = '';
 
         mesh.scale.set(0.6, 0.6, 0.6);
         mesh.traverse(c => { if(c.isMesh) { c.castShadow=true; c.receiveShadow=true; } });  
+        
         setupAnimations(mesh, gltf.animations);
+        
         mesh.position.set(data.position.x, data.position.y, data.position.z);
         mesh.rotation.y = data.rotation;
         
-        const sprite = createTextSprite(data.username, 'white');
+        // Criação do Nome
+        const sprite = createTextSprite(nameToShow, 'white');
         sprite.position.y = 2.2;
         mesh.add(sprite);
         
         scene.add(mesh);
         otherPlayers[data.id] = mesh;
-        playAnim(mesh, data.animation || 'IDLE');
+        
+        playAnim(mesh, 'IDLE');
     });
 }
 
@@ -817,28 +857,61 @@ function animate() {
     
     // REMOVI A SEGUNDA DECLARAÇÃO DE 'now' AQUI QUE CAUSAVA O ERRO
 
+// --- LOOP DOS OUTROS JOGADORES (Revisado) ---
+    const LERP_SPEED = 6.0; // Velocidade de suavização (Quanto maior, mais rápido "cola" na posição real, mas mais "duro" fica)
+    const ROT_SPEED = 10.0; // Rotação deve ser rápida para ele olhar logo para onde vai
+
     Object.values(otherPlayers).forEach(p => {
-        if (p.userData.targetPos) {
-            // Quanto tempo passou desde que o pacote chegou?
-            const timePassed = now - p.userData.moveStart;
-            
-            // Qual a porcentagem do movimento já completada? (0.0 a 1.0)
-            let alpha = timePassed / (SERVER_UPDATE_RATE + BUFFER_TIME);
-            
-            // Limita a 1.0 para ele não passar do ponto e continuar andando infinitamente
-            if (alpha > 1.0) alpha = 1.0; 
+        if (!p.userData.targetPos) return;
 
-            // Move suavemente do Ponto A (lastPos) ao Ponto B (targetPos)
-            p.position.lerpVectors(p.userData.lastPos, p.userData.targetPos, alpha);
-
-            // Rotação Suave
-            let diff = p.userData.targetRot - p.userData.lastRot;
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            while (diff < -Math.PI) diff += Math.PI * 2;
-            
-            p.rotation.y = p.userData.lastRot + (diff * alpha);
-        }
+        // 1. INTERPOLAÇÃO DE POSIÇÃO (Suavização Exponencial)
+        // Movemos o boneco X% do caminho em direção ao alvo a cada frame
+        // delta * LERP_SPEED garante que seja independente de FPS
+        const dist = p.position.distanceTo(p.userData.targetPos);
         
+        if (dist > 0.05) { // Só move se estiver a mais de 5cm do alvo (evita tremedeira microscópica)
+            // O fator de lerp não deve passar de 1.0
+            const lerpFactor = Math.min(delta * LERP_SPEED, 1.0);
+            p.position.lerp(p.userData.targetPos, lerpFactor);
+        } else {
+            // Se estiver muito perto, cola na posição final para garantir precisão
+            //p.position.copy(p.userData.targetPos); // Opcional: pode comentar se quiser ultra-suavidade
+        }
+
+        // 2. INTERPOLAÇÃO DE ROTAÇÃO (Slerp com Quaternion)
+        // Isso calcula o menor caminho de rotação (evita girar 350 graus quando só precisava de 10)
+        p.quaternion.slerp(p.userData.targetQuat, Math.min(delta * ROT_SPEED, 1.0));
+
+        // 3. LÓGICA DE ANIMAÇÃO INTELIGENTE
+        // Calculamos a velocidade REAL que o boneco está se movendo na tela neste frame
+        // Não confiamos apenas no que o server diz, pois o server pode dizer "WALK" mas o boneco estar travado na parede no cliente.
+        
+        // A animação que o servidor MANDOU (Prioridade para Ações)
+        const serverAnim = p.userData.serverAnimation;
+        let finalAnim = 'IDLE';
+
+        // Se for uma ação especial (Ataque, Sentar, Morte), obedecemos o servidor imediatamente
+        if (serverAnim === 'ATTACK' || serverAnim === 'SIT' || serverAnim === 'DEAD') {
+            finalAnim = serverAnim;
+        } 
+        else {
+            // Se for movimento (WALK/RUN/IDLE), decidimos baseados na velocidade visual local
+            // Se a distância para o alvo for significativa, ele está andando
+            if (dist > 0.1) {
+                // Se o servidor disse RUN, usamos RUN, senão WALK
+                finalAnim = (serverAnim === 'RUN') ? 'RUN' : 'WALK';
+            } else {
+                finalAnim = 'IDLE';
+            }
+        }
+
+        // Aplica a animação se mudou
+        if (p.userData.currentAnimation !== finalAnim) {
+            playAnim(p, finalAnim);
+            p.userData.currentAnimation = finalAnim;
+        }
+
+        // Atualiza mixer de animação do Three.js
         if(p.userData.mixer) p.userData.mixer.update(delta);
     });
 
