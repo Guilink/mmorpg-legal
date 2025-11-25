@@ -784,12 +784,18 @@ function animate() {
     }
 
     Object.values(otherPlayers).forEach(p => {
-        if(p.userData.targetPos) p.position.lerp(p.userData.targetPos, CONFIG.lerpFactor);
+        if(p.userData.targetPos) {
+            // Usa o fator PLAYER (0.4)
+            p.position.lerp(p.userData.targetPos, CONFIG.lerpFactorPlayer);
+        }
+        
         if(p.userData.targetRot !== undefined) {
              let diff = p.userData.targetRot - p.rotation.y;
              while (diff > Math.PI) diff -= Math.PI * 2;
              while (diff < -Math.PI) diff += Math.PI * 2;
-             p.rotation.y += diff * CONFIG.lerpFactor;
+             
+             // Rotação também usa o fator PLAYER (mais rápida)
+             p.rotation.y += diff * CONFIG.lerpFactorPlayer;
         }
         if(p.userData.mixer) p.userData.mixer.update(delta);
     });
@@ -797,10 +803,23 @@ function animate() {
     Object.values(monsters).forEach(m => {
         if(m.userData.targetPos) {
             const dist = m.position.distanceTo(m.userData.targetPos);
-            if(dist > 5.0) m.position.copy(m.userData.targetPos);
-            else m.position.lerp(m.userData.targetPos, CONFIG.lerpFactor);
+            
+            if(dist > 5.0) {
+                m.position.copy(m.userData.targetPos);
+            } else {
+                // Usa o fator MONSTER (0.1)
+                m.position.lerp(m.userData.targetPos, CONFIG.lerpFactorMonster);
+            }
         }
-        if(m.userData.targetRot !== undefined) m.rotation.y = m.userData.targetRot;
+        
+        if(m.userData.targetRot !== undefined) {
+            let diff = m.userData.targetRot - m.rotation.y;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            
+            // Rotação suave para monstros
+            m.rotation.y += diff * CONFIG.lerpFactorMonster;
+        }
         if(m.userData.mixer) m.userData.mixer.update(delta);
     });
 
