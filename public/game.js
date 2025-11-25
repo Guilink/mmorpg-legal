@@ -355,7 +355,7 @@ function loadMap(mapConfig, myData, players, mobs) {
     // Cache de monstros
     if(!monsterTemplates['monster1']) { toLoad++; loader.load('assets/monster1.glb', g=>{monsterTemplates['monster1']=g; checkDone();}); }
     if(!monsterTemplates['monster2']) { toLoad++; loader.load('assets/monster2.glb', g=>{monsterTemplates['monster2']=g; checkDone();}); }
-    if(!monsterTemplates['rui']) { toLoad++; loader.load('assets/rui.glb', g=>{monsterTemplates['rui']=g; checkDone();}); }
+    if(!monsterTemplates['pve1']) { toLoad++; loader.load('assets/pve1.glb', g=>{monsterTemplates['pve1']=g; checkDone();}); }
 
     loader.load('assets/' + mapConfig.asset, gltf => {
         const model = gltf.scene;
