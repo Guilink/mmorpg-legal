@@ -156,20 +156,21 @@ socket.on('player_moved', d => {
     if(d.id === socket.id) return;
     const p = otherPlayers[d.id];
     if(p) {
-        // --- NOVO: Adiciona ao histórico ---
-        p.userData.positionBuffer.push({
-            timestamp: Date.now(),
-            position: new THREE.Vector3(d.position.x, d.position.y, d.position.z),
-            rotation: d.rotation
-        });
+        // Quando chega um pacote novo:
+        // 1. A posição atual vira a "lastPos"
+        p.userData.lastPos.copy(p.position);
         
-        // Mantém o buffer pequeno (máximo 5 pacotes para não ocupar memória)
-        if (p.userData.positionBuffer.length > 5) {
-            p.userData.positionBuffer.shift(); // Remove o mais antigo
-        }
-        // ----------------------------------
+        // 2. A nova posição do pacote vira a "targetPos"
+        p.userData.targetPos.set(d.position.x, d.position.y, d.position.z);
+        
+        // 3. Mesma coisa para rotação
+        p.userData.lastRot = p.rotation.y;
+        p.userData.targetRot = d.rotation;
+        
+        // 4. Marca a hora exata que isso aconteceu
+        p.userData.moveStart = Date.now();
 
-        // Animação continua igual, trocando na hora
+        // Animação
         if(p.userData.current !== d.animation) playAnim(p, d.animation);
     }
 });
@@ -469,15 +470,16 @@ function addOtherPlayer(data) {
         const mesh = gltf.scene;
         mesh.userData.id = data.id; 
         
-        // --- NOVO: Inicializa o Buffer de Posição ---
-        mesh.userData.positionBuffer = []; // Lista de posições recebidas
-        // Já adiciona a posição inicial
-        mesh.userData.positionBuffer.push({
-            timestamp: Date.now(),
-            position: new THREE.Vector3(data.position.x, data.position.y, data.position.z),
-            rotation: data.rotation
-        });
-        // --------------------------------------------
+        // --- NOVO SISTEMA DE INTERPOLAÇÃO DE TEMPO ---
+        // Guardamos onde ele estava e para onde vai
+        mesh.userData.lastPos = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
+        mesh.userData.targetPos = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
+        
+        mesh.userData.lastRot = data.rotation;
+        mesh.userData.targetRot = data.rotation;
+        
+        mesh.userData.moveStart = Date.now(); // Quando começou o movimento
+        // ---------------------------------------------
 
         mesh.scale.set(0.6, 0.6, 0.6);
         mesh.traverse(c => { if(c.isMesh) { c.castShadow=true; c.receiveShadow=true; } });  
@@ -731,7 +733,10 @@ function findBestTarget() {
 
 function animate() {
     requestAnimationFrame(animate);
-    const now = Date.now();
+    
+    // 1. Declaração única de 'now'
+    const now = Date.now(); 
+    
     frameCount++;
     if (now - lastFpsTime >= 1000) {
         if(UI.dbgFps) {
@@ -743,6 +748,7 @@ function animate() {
     }
     const delta = clock.getDelta();
 
+    // --- LÓGICA DO MEU JOGADOR ---
     if(myPlayer && !isMapLoading) {
         if(myPlayer.userData.mixer) myPlayer.userData.mixer.update(delta);
         
@@ -805,52 +811,38 @@ function animate() {
         camera.lookAt(myPlayer.position.x, myPlayer.position.y + 1, myPlayer.position.z);
     }
 
-// --- LOOP DOS OUTROS JOGADORES (INTERPOLAÇÃO PERFEITA) ---
-    const renderTime = Date.now() - CONFIG.interpolationDelay;
+    // --- LOOP DOS OUTROS JOGADORES (Interpolação Linear de Tempo) ---
+    const SERVER_UPDATE_RATE = 100; // O servidor envia a cada 100ms
+    const BUFFER_TIME = 20;         // Pequena margem para instabilidade da net (Total 120ms)
+    
+    // REMOVI A SEGUNDA DECLARAÇÃO DE 'now' AQUI QUE CAUSAVA O ERRO
 
     Object.values(otherPlayers).forEach(p => {
-        const buffer = p.userData.positionBuffer;
-        
-        // Precisamos de pelo menos 2 pacotes para interpolar
-        if (buffer && buffer.length >= 2) {
-            // Encontra dois pacotes: um antes e um depois do tempo de renderização
-            let t0 = buffer[0];
-            let t1 = buffer[1];
+        if (p.userData.targetPos) {
+            // Quanto tempo passou desde que o pacote chegou?
+            const timePassed = now - p.userData.moveStart;
             
-            // Avança no buffer até achar o intervalo correto
-            let i = 0;
-            while (i < buffer.length - 1 && buffer[i+1].timestamp <= renderTime) {
-                t0 = buffer[i];
-                t1 = buffer[i+1];
-                i++;
-            }
+            // Qual a porcentagem do movimento já completada? (0.0 a 1.0)
+            let alpha = timePassed / (SERVER_UPDATE_RATE + BUFFER_TIME);
+            
+            // Limita a 1.0 para ele não passar do ponto e continuar andando infinitamente
+            if (alpha > 1.0) alpha = 1.0; 
 
-            // Se o renderTime está entre t0 e t1
-            if (t0.timestamp <= renderTime && t1.timestamp >= renderTime) {
-                // Calcula a porcentagem (0.0 a 1.0)
-                const total = t1.timestamp - t0.timestamp;
-                const elapsed = renderTime - t0.timestamp;
-                const alpha = elapsed / total;
+            // Move suavemente do Ponto A (lastPos) ao Ponto B (targetPos)
+            p.position.lerpVectors(p.userData.lastPos, p.userData.targetPos, alpha);
 
-                // Move suavemente
-                p.position.lerpVectors(t0.position, t1.position, alpha);
-
-                // Rotação suave (Menor caminho)
-                let diff = t1.rotation - t0.rotation;
-                while (diff > Math.PI) diff -= Math.PI * 2;
-                while (diff < -Math.PI) diff += Math.PI * 2;
-                p.rotation.y = t0.rotation + (diff * alpha);
-            } 
-            else {
-                // Caso não tenha dados futuros (lag ou parado), fica no último conhecido
-                // (Geralmente acontece se o buffer esvaziar)
-                p.position.copy(buffer[buffer.length-1].position);
-            }
+            // Rotação Suave
+            let diff = p.userData.targetRot - p.userData.lastRot;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            
+            p.rotation.y = p.userData.lastRot + (diff * alpha);
         }
         
         if(p.userData.mixer) p.userData.mixer.update(delta);
     });
 
+    // --- LOOP DOS MONSTROS ---
     Object.values(monsters).forEach(m => {
         if(m.userData.targetPos) {
             const dist = m.position.distanceTo(m.userData.targetPos);
@@ -874,9 +866,7 @@ function animate() {
         if(m.userData.mixer) m.userData.mixer.update(delta);
     });
 
-    renderer.render(scene, camera);
-    // ATUALIZAÇÃO DO ANEL
-    // Recupera o objeto usando o ID salvo
+    // --- ATUALIZAÇÃO DO ANEL (Movi para ANTES do render para ficar sincronizado) ---
     const activeTarget = monsters[currentTargetId] || otherPlayers[currentTargetId];
 
     if (targetRing && activeTarget) {
@@ -885,10 +875,10 @@ function animate() {
         targetRing.position.lerp(activeTarget.position, 0.2);
         targetRing.position.y = 0.05;
     } else {
-        // Se não tem ID, ou se o ID não está mais na lista (morreu/saiu)
         if(targetRing) targetRing.visible = false;
-        
-        // Opcional: Se o monstro sumiu da lista, limpamos o ID para não ficar processando
+        // Opcional: Se o monstro sumiu da lista, limpamos o ID
         if (!activeTarget) currentTargetId = null;
     }
+
+    renderer.render(scene, camera);
 }
