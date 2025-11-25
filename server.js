@@ -359,7 +359,7 @@ socket.on('player_update', (data) => {
             animation: data.animation 
         });
 
-        // Checagem de Portais (A linha que estava dando erro era aqui dentro)
+        // Checagem de Portais (A linha que estava dando erro era aqui dentro ok)
         if (mapConfig.portals) {
             mapConfig.portals.forEach(portal => {
                 const dx = socket.position.x - portal.x;
