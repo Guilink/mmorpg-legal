@@ -475,17 +475,34 @@ function addOtherPlayer(data) {
 
 function addMonster(data) {
     if(monsters[data.id]) return;
-    const tpl = monsterTemplates[data.type === 'slime' ? 'monster1' : 'monster2'];
-    if(!tpl) return;
+
+    // --- NOVA LÓGICA DE SELEÇÃO ---
+    // Aqui você define qual 'type' do servidor usa qual nome de template carregado
+    const modelMap = {
+        'slime': 'monster1',  // O tipo 'slime' usa o arquivo monster1
+        'bat':   'monster2',  // O tipo 'bat' usa o arquivo monster2
+        'pve1':  'pve1'       // O tipo 'pve1' usa o arquivo pve1
+    };
+
+    // Pega o nome do modelo baseado no tipo. Se não achar, usa 'monster1' pra não travar
+    const modelName = modelMap[data.type] || 'monster1';
+    const tpl = monsterTemplates[modelName];
+    // ------------------------------
+
+    if(!tpl) return; // Se o modelo ainda não carregou, ignora
+
     const mesh = tpl.scene.clone();
-    // --- CORREÇÃO IMPORTANTE AQUI ---
-    mesh.userData.id = data.id; // Salva o ID real do jogo (ex: "mob_0")
-    // --------------------------------
+    
+    // Configura o ID correto
+    mesh.userData.id = data.id; 
+
     mesh.scale.set(0.4, 0.4, 0.4);
     mesh.traverse(c => { if(c.isMesh) { c.castShadow=true; c.receiveShadow=true; } });  
+    
     setupAnimations(mesh, tpl.animations);
     mesh.position.set(data.position.x, data.position.y, data.position.z);
     mesh.rotation.y = data.rotation;
+    
     scene.add(mesh);
     monsters[data.id] = mesh;
     mesh.userData.targetPos = mesh.position.clone();
