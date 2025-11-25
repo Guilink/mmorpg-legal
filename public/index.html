@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>MMORPG V3</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- LOGIN -->
+    <div id="login-screen">
+        <div id="form-login" class="panel-box">
+            <h1>Login</h1>
+            <input type="text" id="login-user" placeholder="Usuário">
+            <input type="password" id="login-pass" placeholder="Senha">
+            <button onclick="performLogin()">Entrar</button>
+            <div class="link-btn" onclick="toggleForms()">Criar nova conta</div>
+            <div id="login-error" class="error"></div>
+        </div>
+
+        <div id="form-register" class="panel-box" style="display: none;">
+            <h1>Criar Conta</h1>
+            <input type="text" id="reg-user" placeholder="Usuário">
+            <input type="password" id="reg-pass" placeholder="Senha">
+            <input type="password" id="reg-pass2" placeholder="Repetir Senha">
+            <button onclick="performRegister()">Registrar</button>
+            <div class="link-btn" onclick="toggleForms()">Voltar ao Login</div>
+            <div id="reg-error" class="error"></div>
+        </div>
+    </div>
+
+    <!-- LOADING -->
+    <div id="loading-screen">
+        <h2>VIAJANDO PARA...</h2>
+        <h1 id="map-name" style="font-size: 40px; margin: 10px 0;">---</h1>
+        <p>Carregando terreno e entidades...</p>
+    </div>
+
+<!-- HUD -->
+    <div id="hud" style="display: none;">
+        <!-- Level e XP -->
+        <div class="level-box">
+            <span class="lvl-badge">Nv. <span id="lvl-text">1</span></span>
+            <div class="xp-bg"><div id="xp-bar" class="xp-fill" style="width: 0%"></div></div>
+        </div>
+
+        <!-- Barras HP/MP -->
+        <div class="bar-container">
+            <div class="stat-row"><span>HP</span> <span id="hp-text">Loading...</span></div>
+            <div class="progress-bg"><div id="hp-bar" class="progress-fill hp-fill" style="width: 100%"></div></div>
+            
+            <div class="stat-row"><span>MP</span> <span id="mp-text">Loading...</span></div>
+            <div class="progress-bg"><div id="mp-bar" class="progress-fill mp-fill" style="width: 100%"></div></div>
+        </div>
+
+        <!-- Botão Status -->
+        <div id="btn-status" onclick="toggleStatusWindow()">S</div>
+    </div>
+
+    <!-- JANELA DE STATUS (Nova) -->
+    <div id="status-window" style="display: none;">
+        <div class="win-header">ATRIBUTOS</div>
+        
+        <div class="win-content">
+            <div class="points-row">Pontos Disponíveis: <span id="st-points" style="color:#0ff">0</span></div>
+
+            <!-- Atributos Primários -->
+            <div class="attr-row">
+                <span>FORÇA</span>
+                <div class="attr-controls">
+                    <button onclick="changeAttr('str', -1)">-</button>
+                    <span id="val-str">0</span>
+                    <button onclick="changeAttr('str', 1)">+</button>
+                </div>
+            </div>
+            <div class="attr-row">
+                <span>AGILIDADE</span>
+                <div class="attr-controls">
+                    <button onclick="changeAttr('agi', -1)">-</button>
+                    <span id="val-agi">0</span>
+                    <button onclick="changeAttr('agi', 1)">+</button>
+                </div>
+            </div>
+            <div class="attr-row">
+                <span>INTELIG.</span>
+                <div class="attr-controls">
+                    <button onclick="changeAttr('int', -1)">-</button>
+                    <span id="val-int">0</span>
+                    <button onclick="changeAttr('int', 1)">+</button>
+                </div>
+            </div>
+            <div class="attr-row">
+                <span>VITALID.</span>
+                <div class="attr-controls">
+                    <button onclick="changeAttr('vit', -1)">-</button>
+                    <span id="val-vit">0</span>
+                    <button onclick="changeAttr('vit', 1)">+</button>
+                </div>
+            </div>
+
+            <hr style="border-color: #444; margin: 10px 0;">
+
+            <!-- Stats Derivados -->
+            <div class="derived-stats">
+                <div>ATQ: <span id="d-atk">0</span></div>
+                <div>DEF: <span id="d-def">0</span></div>
+                <div>M.ATK: <span id="d-matk">0</span></div>
+                <div>ESQ: <span id="d-eva">0</span></div>
+                <div>VEL: <span id="d-spd">0</span></div>
+            </div>
+
+            <div class="win-footer">
+                <button class="btn-confirm" onclick="confirmStats()">SALVAR</button>
+                <button class="btn-cancel" onclick="toggleStatusWindow()">FECHAR</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NOVO: Painel de Debug (Canto Superior Direito) -->
+    <div id="debug-panel" style="display: none;">
+        <div>FPS: <span id="dbg-fps" style="color: #ffff00">0</span></div>
+        <div>MAPA: <span id="dbg-map">---</span></div>
+        <div>POS: <span id="dbg-pos">0.0, 0.0</span></div>
+        <div>PLAYERS: <span id="dbg-players">0</span></div>
+    </div>
+
+    <!-- CHAT -->
+    <div id="chat-container" style="display: none; opacity: 0.5;">
+        <div id="chat-history"></div>
+        <div class="chat-input-wrapper">
+            <!-- public/index.html -->
+        <input type="text" id="chat-input" maxlength="120" placeholder="Enter para conversar..." autocomplete="off">
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <!-- LIBS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <!-- GAME LOGIC -->
+    <script type="module" src="game.js"></script>
+</body>
+</html>
