@@ -154,10 +154,23 @@ socket.on('player_left', (id) => { if(otherPlayers[id]) { scene.remove(otherPlay
 
 socket.on('player_moved', d => {
     if(d.id === socket.id) return;
-    if(otherPlayers[d.id]) {
-        otherPlayers[d.id].userData.targetPos = new THREE.Vector3(d.position.x, d.position.y, d.position.z);
-        otherPlayers[d.id].userData.targetRot = d.rotation;
-        if(otherPlayers[d.id].userData.current !== d.animation) playAnim(otherPlayers[d.id], d.animation);
+    const p = otherPlayers[d.id];
+    if(p) {
+        // --- NOVO: Adiciona ao histórico ---
+        p.userData.positionBuffer.push({
+            timestamp: Date.now(),
+            position: new THREE.Vector3(d.position.x, d.position.y, d.position.z),
+            rotation: d.rotation
+        });
+        
+        // Mantém o buffer pequeno (máximo 5 pacotes para não ocupar memória)
+        if (p.userData.positionBuffer.length > 5) {
+            p.userData.positionBuffer.shift(); // Remove o mais antigo
+        }
+        // ----------------------------------
+
+        // Animação continua igual, trocando na hora
+        if(p.userData.current !== d.animation) playAnim(p, d.animation);
     }
 });
 
@@ -454,21 +467,30 @@ function addOtherPlayer(data) {
     const loader = new THREE.GLTFLoader();
     loader.load('assets/heroi1.glb', gltf => {
         const mesh = gltf.scene;
-        // --- CORREÇÃO IMPORTANTE AQUI ---
-        mesh.userData.id = data.id; // Salva o ID real do jogo (ex: socket id)
-        // --------------------------------
+        mesh.userData.id = data.id; 
+        
+        // --- NOVO: Inicializa o Buffer de Posição ---
+        mesh.userData.positionBuffer = []; // Lista de posições recebidas
+        // Já adiciona a posição inicial
+        mesh.userData.positionBuffer.push({
+            timestamp: Date.now(),
+            position: new THREE.Vector3(data.position.x, data.position.y, data.position.z),
+            rotation: data.rotation
+        });
+        // --------------------------------------------
+
         mesh.scale.set(0.6, 0.6, 0.6);
         mesh.traverse(c => { if(c.isMesh) { c.castShadow=true; c.receiveShadow=true; } });  
         setupAnimations(mesh, gltf.animations);
         mesh.position.set(data.position.x, data.position.y, data.position.z);
         mesh.rotation.y = data.rotation;
+        
         const sprite = createTextSprite(data.username, 'white');
         sprite.position.y = 2.2;
         mesh.add(sprite);
+        
         scene.add(mesh);
         otherPlayers[data.id] = mesh;
-        mesh.userData.targetPos = mesh.position.clone();
-        mesh.userData.targetRot = data.rotation;
         playAnim(mesh, data.animation || 'IDLE');
     });
 }
@@ -783,20 +805,49 @@ function animate() {
         camera.lookAt(myPlayer.position.x, myPlayer.position.y + 1, myPlayer.position.z);
     }
 
+// --- LOOP DOS OUTROS JOGADORES (INTERPOLAÇÃO PERFEITA) ---
+    const renderTime = Date.now() - CONFIG.interpolationDelay;
+
     Object.values(otherPlayers).forEach(p => {
-        if(p.userData.targetPos) {
-            // Usa o fator PLAYER (0.4)
-            p.position.lerp(p.userData.targetPos, CONFIG.lerpFactorPlayer);
+        const buffer = p.userData.positionBuffer;
+        
+        // Precisamos de pelo menos 2 pacotes para interpolar
+        if (buffer && buffer.length >= 2) {
+            // Encontra dois pacotes: um antes e um depois do tempo de renderização
+            let t0 = buffer[0];
+            let t1 = buffer[1];
+            
+            // Avança no buffer até achar o intervalo correto
+            let i = 0;
+            while (i < buffer.length - 1 && buffer[i+1].timestamp <= renderTime) {
+                t0 = buffer[i];
+                t1 = buffer[i+1];
+                i++;
+            }
+
+            // Se o renderTime está entre t0 e t1
+            if (t0.timestamp <= renderTime && t1.timestamp >= renderTime) {
+                // Calcula a porcentagem (0.0 a 1.0)
+                const total = t1.timestamp - t0.timestamp;
+                const elapsed = renderTime - t0.timestamp;
+                const alpha = elapsed / total;
+
+                // Move suavemente
+                p.position.lerpVectors(t0.position, t1.position, alpha);
+
+                // Rotação suave (Menor caminho)
+                let diff = t1.rotation - t0.rotation;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                p.rotation.y = t0.rotation + (diff * alpha);
+            } 
+            else {
+                // Caso não tenha dados futuros (lag ou parado), fica no último conhecido
+                // (Geralmente acontece se o buffer esvaziar)
+                p.position.copy(buffer[buffer.length-1].position);
+            }
         }
         
-        if(p.userData.targetRot !== undefined) {
-             let diff = p.userData.targetRot - p.rotation.y;
-             while (diff > Math.PI) diff -= Math.PI * 2;
-             while (diff < -Math.PI) diff += Math.PI * 2;
-             
-             // Rotação também usa o fator PLAYER (mais rápida)
-             p.rotation.y += diff * CONFIG.lerpFactorPlayer;
-        }
         if(p.userData.mixer) p.userData.mixer.update(delta);
     });
 
