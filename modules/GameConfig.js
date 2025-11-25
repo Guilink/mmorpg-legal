@@ -35,7 +35,7 @@ const MAP_CONFIG = {
 const MONSTER_TYPES = {
     'slime': { hp: 80, model: 'monster1', speed: 0.05, range: 1.0, attackSpeed: 2000, dmg: 10, xp: 20 },
     'bat':   { hp: 150, model: 'monster2', speed: 0.08, range: 1.0, attackSpeed: 1500, dmg: 16, xp: 35 },
-    'rui':   { hp: 1000, model: 'monster2', speed: 0.08, range: 1.0, attackSpeed: 1000, dmg: 80, xp: 50 },
+    'rui':   { hp: 1000, model: 'pve1', speed: 0.08, range: 1.0, attackSpeed: 1000, dmg: 80, xp: 50 },
 };
 
 module.exports = {
