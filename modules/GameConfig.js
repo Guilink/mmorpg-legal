@@ -17,7 +17,9 @@ const MAP_CONFIG = {
         id: 'vilarejo', asset: 'mapa1.glb', pvp: false, mapSize: 30,
         offset: { x: 0.5, y: 0, z: 0.5 },
         portals: [{ x: -2.10, z: 13.45, radius: 1.0, targetMap: 'floresta', targetX: 0, targetZ: 0 }],
-        monsterSpawns: [] 
+        monsterSpawns: [
+            { type: 'rui', count: 2, area: { x: 0, z: 0, radius: 8 } }
+        ] 
     },
     'floresta': {
         id: 'floresta', asset: 'mapa2.glb', pvp: true, mapSize: 20,
@@ -32,7 +34,8 @@ const MAP_CONFIG = {
 
 const MONSTER_TYPES = {
     'slime': { hp: 80, model: 'monster1', speed: 0.05, range: 1.0, attackSpeed: 2000, dmg: 10, xp: 20 },
-    'bat':   { hp: 150, model: 'monster2', speed: 0.08, range: 1.0, attackSpeed: 1500, dmg: 16, xp: 35 }
+    'bat':   { hp: 150, model: 'monster2', speed: 0.08, range: 1.0, attackSpeed: 1500, dmg: 16, xp: 35 },
+    'rui':   { hp: 1000, model: 'monster2', speed: 0.08, range: 1.0, attackSpeed: 1000, dmg: 80, xp: 50 },
 };
 
 module.exports = {
