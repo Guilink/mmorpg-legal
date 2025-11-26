@@ -152,3 +152,29 @@ body { overflow: hidden; background: #000; }
 .win-footer { display: flex; gap: 10px; }
 .btn-confirm { flex: 1; background: #00aa00; border: none; padding: 8px; color: white; cursor: pointer; font-weight: bold; }
 .btn-cancel { flex: 1; background: #aa0000; border: none; padding: 8px; color: white; cursor: pointer; font-weight: bold; }
+
+/* Container da barra (fundo cinza escuro) */
+.loading-bar-container {
+    width: 300px;
+    height: 20px;
+    background-color: #333;
+    border: 2px solid #555;
+    border-radius: 10px;
+    margin: 15px auto; /* Centraliza */
+    overflow: hidden;
+}
+
+/* O preenchimento da barra (verde ou azul) */
+#loading-bar-fill {
+    width: 0%;
+    height: 100%;
+    background-color: #00ff88; /* Verde neon */
+    transition: width 0.2s ease-out; /* Suaviza o movimento */
+}
+
+/* Texto da porcentagem */
+#loading-percent {
+    font-size: 14px;
+    color: #ccc;
+    font-weight: bold;
+}

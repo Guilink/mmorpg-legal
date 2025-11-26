@@ -4,6 +4,8 @@
 export const UI = {
     loginScreen: document.getElementById('login-screen'),
     loadingScreen: document.getElementById('loading-screen'),
+    loadingBarFill: document.getElementById('loading-bar-fill'),
+    loadingPercent: document.getElementById('loading-percent'),    
     hud: document.getElementById('hud'),
     debugPanel: document.getElementById('debug-panel'),
     chatContainer: document.getElementById('chat-container'),
@@ -174,4 +176,13 @@ export function changeAttr(type, amount) {
 
 export function getTempAttributes() {
     return tempAttributes;
+}
+
+export function updateLoadingBar(percent) {
+    if (UI.loadingBarFill) {
+        UI.loadingBarFill.style.width = percent + '%';
+    }
+    if (UI.loadingPercent) {
+        UI.loadingPercent.textContent = Math.floor(percent) + '%';
+    }
 }

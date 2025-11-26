@@ -14,7 +14,8 @@ import {
     refreshStatusWindow,
     setupStatusWindowData,
     changeAttr,
-    getTempAttributes // Necessário para enviar os dados alterados
+    getTempAttributes,
+    updateLoadingBar // Necessário para enviar os dados alterados
 } from './js/UIManager.js';
 import { keys, setupInputs, getIsChatActive } from './js/InputManager.js';
 
@@ -373,10 +374,14 @@ function loadMap(mapConfig, myData, players, mobs) {
     isMapLoading = true;
     currentMapConfig = mapConfig; 
     
+    // --- UI DE CARREGAMENTO ---
     UI.loadingScreen.style.display = 'flex';
     UI.mapName.textContent = mapConfig.id.toUpperCase();
+    
+    // Reseta a barra para 0% ao começar
+    updateLoadingBar(0); 
 
-// --- LIMPEZA DE CENA (CRÍTICO) ---
+    // --- LIMPEZA DE CENA (IMPORTANTE) ---
     environmentLayer.clear(); 
     
     // Remove jogadores antigos visualmente e da memória
@@ -384,67 +389,89 @@ function loadMap(mapConfig, myData, players, mobs) {
         scene.remove(otherPlayers[id]); 
         delete otherPlayers[id]; 
     });
-    otherPlayers = {}; // Força o objeto a ficar vazio
+    otherPlayers = {}; 
 
     // Remove monstros antigos
     Object.keys(monsters).forEach(id => { 
         scene.remove(monsters[id]); 
         delete monsters[id]; 
     });
-    monsters = {}; // Força o objeto a ficar vazio
+    monsters = {}; 
 
+    // Remove props antigos (se houver)
     mapProps.forEach(p => scene.remove(p)); 
     mapProps = [];
     // ----------------------------------
     
     const loader = new THREE.GLTFLoader();
+    
+    // Contador de assets para saber quando tudo terminou
+    // Começa com 1 (o Mapa)
     let toLoad = 1; 
 
-    if(!myPlayer && !isPlayerLoading) { toLoad++; isPlayerLoading = true; }
+    // Se o player ainda não existe, adiciona na fila de carregamento
+    if(!myPlayer && !isPlayerLoading) { 
+        toLoad++; 
+        isPlayerLoading = true; 
+    }
 
-    // Cache de monstros
+    // --- CACHE DE MODELOS DE MONSTROS ---
+    // Só carrega se ainda não estiver na memória
     if(!monsterTemplates['monster1']) { toLoad++; loader.load('assets/monster1.glb', g=>{monsterTemplates['monster1']=g; checkDone();}); }
     if(!monsterTemplates['monster2']) { toLoad++; loader.load('assets/monster2.glb', g=>{monsterTemplates['monster2']=g; checkDone();}); }
     if(!monsterTemplates['pve1']) { toLoad++; loader.load('assets/pve1.glb', g=>{monsterTemplates['pve1']=g; checkDone();}); }
 
-loader.load('assets/' + mapConfig.asset, gltf => {
-        const model = gltf.scene;
-        model.traverse(c => { 
-            if(c.isMesh) { 
-                c.receiveShadow = true; 
-                c.castShadow = true;   
-                
-                // --- CORREÇÃO DO BUG GRÁFICO ---
-                if(c.material) {
-                    // 1. Desativa a transparência complexa (que causa o bug de ver através)
-                    c.material.transparent = false;
+    // --- CARREGAMENTO DO MAPA (COM BARRA DE PROGRESSO) ---
+    loader.load(
+        'assets/' + mapConfig.asset, 
+        
+        // 1. SUCESSO (onLoad)
+        (gltf) => {
+            const model = gltf.scene;
+            
+            model.traverse(c => { 
+                if(c.isMesh) { 
+                    c.receiveShadow = true; 
+                    c.castShadow = true;   
                     
-                    // 2. Ativa o AlphaTest: Isso permite que coisas como folhas de árvores
-                    // ou grades continuem transparentes onde devem, mas sem bugar as paredes.
-                    c.material.alphaTest = 0.5;
-                    
-                    // 3. Garante que o objeto escreva no buffer de profundidade
-                    c.material.depthWrite = true;
-                    
-                    // 4. (Opcional) Renderiza os dois lados da face.
-                    // Ajuda se o seu editor exportou alguma parede com a face virada ao contrário.
-                    c.material.side = THREE.DoubleSide; 
-                    
-                    // Mantém a configuração que você já tinha
-                    c.material.dithering = false;
-                    
-                    // Se a textura ficar muito escura ou clara, descomente a linha abaixo:
-                    // c.material.map.encoding = THREE.sRGBEncoding;
-                }
-                // -------------------------------
-            } 
-        });
-        const off = mapConfig.offset || { x: 0, y: 0, z: 0 };
-        model.position.set(off.x, off.y, off.z);
-        environmentLayer.add(model); 
-        checkDone();
-    });
+                    // --- CORREÇÃO DE TRANSPARÊNCIA/RAIO-X ---
+                    if(c.material) {
+                        c.material.transparent = false; // Força objeto sólido
+                        c.material.alphaTest = 0.5;     // Recorte correto para grades/folhas
+                        c.material.depthWrite = true;   // Escreve no buffer de profundidade
+                        c.material.side = THREE.DoubleSide; // Renderiza os dois lados da parede
+                        c.material.dithering = false;
+                    }
+                    // -----------------------------------------
+                } 
+            });
 
+            const off = mapConfig.offset || { x: 0, y: 0, z: 0 };
+            model.position.set(off.x, off.y, off.z);
+            environmentLayer.add(model); 
+            
+            // Garante 100% visual no final
+            updateLoadingBar(100);
+            checkDone();
+        },
+
+        // 2. PROGRESSO (onProgress)
+        (xhr) => {
+            if (xhr.lengthComputable) {
+                const percentComplete = (xhr.loaded / xhr.total) * 100;
+                // Atualiza a barra na UI
+                updateLoadingBar(percentComplete);
+            }
+        },
+
+        // 3. ERRO (onError)
+        (error) => {
+            console.error('Erro fatal ao carregar mapa:', error);
+            UI.mapName.textContent = "ERRO NO DOWNLOAD";
+        }
+    );
+
+    // --- CARREGAMENTO DO JOGADOR (SE NECESSÁRIO) ---
     if(!myPlayer && isPlayerLoading) {
         loader.load('assets/heroi1.glb', gltf => {
             const mesh = gltf.scene;
@@ -456,10 +483,12 @@ loader.load('assets/' + mapConfig.asset, gltf => {
             checkDone();
         });
     } else if(myPlayer) {
+        // Se o player já existe, apenas reposiciona
         myPlayer.position.set(myData.position.x, myData.position.y, myData.position.z);
         scene.add(myPlayer); 
     }
 
+    // Função interna para finalizar quando TODOS os arquivos chegarem
     function checkDone() {
         toLoad--;
         if(toLoad <= 0) {
