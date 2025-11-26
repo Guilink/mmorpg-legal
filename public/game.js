@@ -234,7 +234,15 @@ function initEngine() {
 
     clock = new THREE.Clock();
     scene = new THREE.Scene(); 
-    scene.background = new THREE.Color(0x87CEEB); 
+    const skyColor = 0x87CEEB; 
+    
+    scene.background = new THREE.Color(skyColor);
+
+    // Adicionamos a Neblina
+    // THREE.Fog(cor, distancia_inicio, distancia_fim)
+    // Start (20): A neblina começa a aparecer a 20 metros do jogador (visão clara).
+    // End (50): A 50 metros, tudo fica 100% da cor do céu, escondendo o fim do mapa.
+    scene.fog = new THREE.Fog(skyColor, 10, 40);
 
     environmentLayer = new THREE.Group();
     scene.add(environmentLayer);
@@ -254,11 +262,16 @@ function initEngine() {
     const ambient = new THREE.AmbientLight(0xffffff, 0.8);
     scene.add(ambient);
 
-    const dir = new THREE.DirectionalLight(0xffffff, 0.4);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.6);
     dir.position.set(20, 50, 20);
     dir.castShadow = true;
     dir.shadow.mapSize.width = 1024;
     dir.shadow.mapSize.height = 1024;
+
+    // CORREÇÃO DO SERRILHADO (Shadow Acne):
+    // O bias empurra a sombra um pouquinho para longe da superfície
+    dir.shadow.bias = -0.0020;
+
     dir.shadow.camera.near = 0.5;
     dir.shadow.camera.far = 100;
     const d = 30;
@@ -394,13 +407,36 @@ function loadMap(mapConfig, myData, players, mobs) {
     if(!monsterTemplates['monster2']) { toLoad++; loader.load('assets/monster2.glb', g=>{monsterTemplates['monster2']=g; checkDone();}); }
     if(!monsterTemplates['pve1']) { toLoad++; loader.load('assets/pve1.glb', g=>{monsterTemplates['pve1']=g; checkDone();}); }
 
-    loader.load('assets/' + mapConfig.asset, gltf => {
+loader.load('assets/' + mapConfig.asset, gltf => {
         const model = gltf.scene;
         model.traverse(c => { 
             if(c.isMesh) { 
                 c.receiveShadow = true; 
                 c.castShadow = true;   
-                if(c.material) c.material.dithering = false;
+                
+                // --- CORREÇÃO DO BUG GRÁFICO ---
+                if(c.material) {
+                    // 1. Desativa a transparência complexa (que causa o bug de ver através)
+                    c.material.transparent = false;
+                    
+                    // 2. Ativa o AlphaTest: Isso permite que coisas como folhas de árvores
+                    // ou grades continuem transparentes onde devem, mas sem bugar as paredes.
+                    c.material.alphaTest = 0.5;
+                    
+                    // 3. Garante que o objeto escreva no buffer de profundidade
+                    c.material.depthWrite = true;
+                    
+                    // 4. (Opcional) Renderiza os dois lados da face.
+                    // Ajuda se o seu editor exportou alguma parede com a face virada ao contrário.
+                    c.material.side = THREE.DoubleSide; 
+                    
+                    // Mantém a configuração que você já tinha
+                    c.material.dithering = false;
+                    
+                    // Se a textura ficar muito escura ou clara, descomente a linha abaixo:
+                    // c.material.map.encoding = THREE.sRGBEncoding;
+                }
+                // -------------------------------
             } 
         });
         const off = mapConfig.offset || { x: 0, y: 0, z: 0 };
@@ -846,7 +882,7 @@ function animate() {
             }
         }
         
-        tempOrigin.copy(myPlayer.position).add(new THREE.Vector3(0, 5, 8)); 
+        tempOrigin.copy(myPlayer.position).add(new THREE.Vector3(0, 6, 7)); 
         camera.position.lerp(tempOrigin, 0.1);
         camera.lookAt(myPlayer.position.x, myPlayer.position.y + 1, myPlayer.position.z);
     }
