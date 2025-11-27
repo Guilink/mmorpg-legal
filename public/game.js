@@ -17,7 +17,7 @@ import {
     getTempAttributes,
     updateLoadingBar // Necessário para enviar os dados alterados
 } from './js/UIManager.js';
-import { keys, setupInputs, getIsChatActive } from './js/InputManager.js';
+import { keys, setupInputs, getIsChatActive, setChatActive } from './js/InputManager.js';
 
 // --- INICIALIZAÇÃO DO SOCKET ---
 const socket = io();
@@ -56,6 +56,11 @@ let lastAttackTime = 0;
 const ATTACK_COOLDOWN = 800; //ms
 let currentMapConfig = null;
 let lastPacketTime = 0;
+let totalOnline = 1;
+const myMsgHistory = [];
+const MAX_HISTORY = 10; // Guarda as ultimas 10 mensagens
+let historyIndex = -1;
+let lastSitTime = 0;
 
 // Dados RPG Locais
 let myStats = { hp: 100, maxHp: 100, mp: 50, maxMp: 50 };
@@ -290,6 +295,11 @@ socket.on('damage_dealt', (d) => {
     if (pos) showDamageNumber(d.damage, pos, color);
 });
 
+// ... Socket Events ...
+socket.on('server_stats', (data) => {
+    totalOnline = data.total;
+});
+
 // --- ENGINE & INITIALIZATION ---
 function initEngine() {
     if (renderer) return;
@@ -343,22 +353,122 @@ function initEngine() {
     targetRing = createTargetIndicator(); // <--- CRIA O ANEL
 
     // CONFIGURA INPUTS
-    setupInputs(
-        // OnChatToggle
-        (active) => {
-            toggleChatFocus(active);
-            if(!active && UI.chatInput.value.trim() !== "") {
-                socket.emit('chat_message', UI.chatInput.value.trim());
-                UI.chatInput.value = "";
-            }
-            if(active && myPlayer) {
+// --- LÓGICA CENTRAL DE ESTADO DO CHAT ---
+    const updateChatState = (isActive) => {
+        setChatActive(isActive);   
+        toggleChatFocus(isActive); 
+        
+        if (isActive) {
+            keys['w'] = keys['a'] = keys['s'] = keys['d'] = false;
+            if (myPlayer) {
                 playAnim(myPlayer, 'IDLE');
                 socket.emit('player_update', { position: myPlayer.position, rotation: myPlayer.rotation.y, animation: 'IDLE' });
             }
+        } else {
+            // Quando sai do chat, reseta o índice do histórico
+            historyIndex = -1;
+        }
+    };
+
+    // 1. EVENTOS NATIVOS (DOM)
+    UI.chatInput.addEventListener('focus', () => updateChatState(true));
+    UI.chatInput.addEventListener('blur', () => updateChatState(false));
+
+// --- CONTROLE DE TECLAS NO INPUT (Histórico + ESC) ---
+    UI.chatInput.addEventListener('keydown', (e) => {
+        
+        // 1. FECHAR COM ESC
+        if (e.key === 'Escape') {
+            e.preventDefault(); // Evita qualquer comportamento padrão
+            UI.chatInput.blur(); // Tira o foco -> Dispara o evento 'blur' -> Libera o WASD
+            return;
+        }
+
+        // 2. NAVEGAÇÃO DO HISTÓRICO
+        const isUp = (e.key === 'ArrowUp');
+        const isDown = (e.key === 'ArrowDown');
+
+        if (isUp || isDown) {
+            // Se segurar Shift, deixa o navegador selecionar texto
+            if (e.shiftKey) return; 
+
+            e.preventDefault(); 
+            
+            if (myMsgHistory.length === 0) return;
+
+            if (isUp) {
+                // Seta para CIMA
+                if (historyIndex === -1) {
+                    historyIndex = myMsgHistory.length - 1;
+                } else if (historyIndex > 0) {
+                    historyIndex--;
+                }
+                UI.chatInput.value = myMsgHistory[historyIndex];
+            } 
+            else if (isDown) {
+                // Seta para BAIXO
+                if (historyIndex === -1) return; 
+
+                historyIndex++; 
+                
+                if (historyIndex >= myMsgHistory.length) {
+                    historyIndex = -1;
+                    UI.chatInput.value = "";
+                } else {
+                    UI.chatInput.value = myMsgHistory[historyIndex];
+                }
+            }
+        }
+    });
+    // -------------------------------------------------------
+
+// 2. CONFIGURAÇÃO DE INPUTS (Teclado Global)
+    setupInputs(
+        // Callback da tecla ENTER
+        () => {
+            // Verifica se o chat está ABERTO (Focado)
+            if (document.activeElement === UI.chatInput) {
+                const txt = UI.chatInput.value.trim();
+                
+                if (txt !== "") {
+                    // --- CASO 1: TEM TEXTO ---
+                    // 1. Envia a mensagem
+                    socket.emit('chat_message', txt);
+                    
+                    // 2. Salva no Histórico
+                    myMsgHistory.push(txt);
+                    if (myMsgHistory.length > MAX_HISTORY) myMsgHistory.shift();
+                    
+                    // 3. Limpa o campo e reseta histórico
+                    UI.chatInput.value = "";
+                    historyIndex = -1;
+                    
+                    // 4. IMPORTANTE: NÃO FAZ BLUR.
+                    // O foco continua no chat. O jogador continua travado para digitar a próxima.
+                    // Se ele quiser sair, ele aperta Enter novamente (caindo no Caso 2) ou clica fora.
+
+                } else {
+                    // --- CASO 2: CAMPO VAZIO ---
+                    // O jogador apertou Enter apenas para fechar o chat.
+                    UI.chatInput.blur(); 
+                    // Isso dispara o evento 'blur' lá em cima, liberando o movimento.
+                }
+
+            } else {
+                // Se o chat estava FECHADO, abre e foca.
+                UI.chatInput.focus(); 
+                // Isso dispara o evento 'focus' lá em cima, travando o movimento.
+            }
         },
-        // OnSit (Space)
+        // Callback do Space (Mantém igual, com cooldown)
         () => {
             if(getIsChatActive() || isAttacking || !myPlayer) return;
+
+            const now = Date.now();
+            if (now - lastSitTime < 300) return; 
+            
+            lastSitTime = now;
+            
             isSitting = !isSitting;
             const anim = isSitting ? 'SIT' : 'IDLE';
             playAnim(myPlayer, anim);
@@ -366,6 +476,7 @@ function initEngine() {
         }
     );
 
+    // Evento de Resize (Mantém igual)
     window.addEventListener('resize', () => { 
         if(!camera || !renderer) return;
         camera.aspect = window.innerWidth/window.innerHeight; 
@@ -611,7 +722,7 @@ function addOtherPlayer(data) {
         
         // Criação do Nome
         const sprite = createTextSprite(nameToShow, 'white');
-        sprite.position.y = 2.2;
+        sprite.position.y = 3.0;
         mesh.add(sprite);
         
         scene.add(mesh);
@@ -938,7 +1049,7 @@ function animate() {
         // OTIMIZAÇÃO DOM: Atualiza as coordenadas de debug apenas a cada 10 frames
         // Evita "Layout Thrashing" (o navegador recalculando estilo loucamente)
         if (frameCount % 10 === 0) {
-            updateDebug(currentMapConfig ? currentMapConfig.id : '', myPlayer.position, Object.keys(otherPlayers).length + 1);
+            updateDebug(currentMapConfig ? currentMapConfig.id : '', myPlayer.position, Object.keys(otherPlayers).length + 1, totalOnline);
         }
 
         const isChatActive = getIsChatActive();

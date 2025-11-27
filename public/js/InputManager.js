@@ -3,32 +3,38 @@
 export const keys = {};
 let isChatActive = false;
 
-export function setupInputs(onChatToggle, onSit) { 
-    // ^ Removemos onAttack dos argumentos, pois trataremos no loop principal
+// Esta função permite que o game.js force o estado do chat
+export function setChatActive(state) {
+    isChatActive = state;
+}
 
-document.addEventListener('keydown', e => {
-        // CORREÇÃO 1: Impede que segurar a tecla fique disparando o evento loucamente
+export function getIsChatActive() {
+    return isChatActive;
+}
+
+export function setupInputs(onEnterPress, onSit) { 
+    document.addEventListener('keydown', e => {
         if (e.repeat) return; 
 
-        // Se o chat estiver aberto...
+        // 1. SE O CHAT ESTIVER ATIVO
         if (isChatActive) {
+            // Se apertar Enter, apenas avisa o game.js. 
+            // NÃO altera 'isChatActive = false' aqui. Deixa o game.js decidir.
             if (e.key === 'Enter') {
-                isChatActive = false;
-                if(onChatToggle) onChatToggle(isChatActive);
+                if(onEnterPress) onEnterPress();
             }
+            // Bloqueia qualquer outra tecla (WASD) de ser registrada
             return;
         }
 
-        // Lógica do Chat (Abrir)
+        // 2. SE O CHAT ESTIVER FECHADO
         if(e.key === 'Enter') {
-            isChatActive = true;
-            // Reseta teclas de movimento para o boneco não sair andando sozinho
-            keys['w'] = keys['a'] = keys['s'] = keys['d'] = keys['f'] = false; 
-            if(onChatToggle) onChatToggle(isChatActive);
-            return;
+            // Avisa o game.js para abrir
+            if(onEnterPress) onEnterPress();
+            return; // Não registra o enter como tecla de jogo
         }
         
-        // Registra tecla pressionada
+        // Registra teclas de movimento apenas se chat estiver fechado
         keys[e.key.toLowerCase()] = true;
 
         // Space para Sentar
@@ -40,8 +46,4 @@ document.addEventListener('keydown', e => {
     document.addEventListener('keyup', e => {
         keys[e.key.toLowerCase()] = false;
     });
-}
-
-export function getIsChatActive() {
-    return isChatActive;
 }

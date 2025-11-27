@@ -266,7 +266,12 @@ setInterval(() => {
 
 }, 100);
 
-// --- SOCKET CONNECTION ---
+// --- SOCKET CONNECTION Envio de Status do Servidor (A cada 2s) ---
+setInterval(() => {
+    const total = Object.keys(onlinePlayers).length;
+    io.emit('server_stats', { total });
+}, 2000);
+
 io.on('connection', (socket) => {
     
     socket.on('register', (data) => {

@@ -99,10 +99,10 @@ export function updateHUD(stats, level, xp, nextXp) {
     if(UI.mpBar) UI.mpBar.style.width = ((mp / maxMp) * 100) + '%';
 }
 
-export function updateDebug(mapId, pos, playersCount) {
+export function updateDebug(mapId, pos, localCount, totalCount) {
     if(UI.dbgMap) UI.dbgMap.textContent = mapId.toUpperCase();
     if(UI.dbgPos) UI.dbgPos.textContent = `${pos.x.toFixed(1)}, ${pos.z.toFixed(1)}`;
-    if(UI.dbgPlayers) UI.dbgPlayers.textContent = playersCount;
+    if(UI.dbgPlayers) UI.dbgPlayers.textContent = `${totalCount || '?'} (${localCount})`; 
 }
 
 export function addLogMessage(user, msg, type) {
@@ -113,10 +113,10 @@ export function addLogMessage(user, msg, type) {
 
 export function toggleChatFocus(isActive) {
     if(isActive) {
-        UI.chatInput.focus(); 
-        UI.chatContainer.style.opacity = 1;
+        // Apenas visual. O .focus() real será chamado pelo evento ou pelo clique.
+        UI.chatContainer.style.opacity = 1; 
     } else {
-        UI.chatInput.blur(); 
+        // Apenas visual.
         UI.chatContainer.style.opacity = 0.5;
     }
 }
