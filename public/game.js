@@ -18,6 +18,13 @@ import {
     updateLoadingBar // Necessário para enviar os dados alterados
 } from './js/UIManager.js';
 import { keys, setupInputs, getIsChatActive, setChatActive } from './js/InputManager.js';
+import { 
+    FadeManager, 
+    createChatBubble, 
+    showDamageNumber, 
+    createTargetIndicator, 
+    createTextSprite 
+} from './js/VFX.js';
 
 // --- INICIALIZAÇÃO DO SOCKET ---
 const socket = io();
@@ -70,87 +77,6 @@ let myAttributes = { str: 5, agi: 5, int: 5, vit: 5 };
 
 // --- SISTEMA DE FADE (VISUAL) ---
 const fadingMeshes = []; // Lista de objetos sendo animados (fade in ou out)
-
-const FadeManager = {
-    // Faz aparecer suavemente
-    fadeIn: (mesh) => {
-        if (!mesh) return;
-        // Prepara materiais
-        mesh.traverse(c => {
-            if (c.isMesh && c.material) {
-                c.material.transparent = true;
-                c.material.opacity = 0; // Começa invisível
-                // depthWrite ajuda a não bugar a ordem de renderização
-                c.material.depthWrite = true; 
-            }
-        });
-        mesh.userData.fadeTarget = 1.0;
-        mesh.userData.fadeSpeed = 2.0; // Velocidade (quanto maior, mais rápido)
-        fadingMeshes.push(mesh);
-    },
-
-    // Faz sumir e depois remove da cena
-    fadeOutAndRemove: (mesh) => {
-        if (!mesh) return;
-        // Garante que materiais aceitem opacidade
-        mesh.traverse(c => {
-            if (c.isMesh && c.material) {
-                c.material.transparent = true;
-                c.material.depthWrite = true;
-            }
-        });
-        mesh.userData.fadeTarget = 0.0;
-        mesh.userData.fadeSpeed = 2.0;
-        mesh.userData.removeOnComplete = true; // Marca para deletar no final
-        
-        // Se já estiver na lista (ex: estava dando fade-in e morreu), atualiza. 
-        // Se não, adiciona.
-        if (!fadingMeshes.includes(mesh)) fadingMeshes.push(mesh);
-    },
-
-    // Roda a cada frame
-    update: (delta) => {
-        for (let i = fadingMeshes.length - 1; i >= 0; i--) {
-            const mesh = fadingMeshes[i];
-            let complete = false;
-
-            mesh.traverse(c => {
-                if (c.isMesh && c.material) {
-                    const current = c.material.opacity;
-                    const target = mesh.userData.fadeTarget;
-                    
-                    // Aproxima a opacidade do alvo (Lerp simples)
-                    const diff = target - current;
-                    
-                    if (Math.abs(diff) < 0.05) {
-                        c.material.opacity = target;
-                        complete = true;
-                    } else {
-                        // Move em direção ao alvo
-                        c.material.opacity += Math.sign(diff) * mesh.userData.fadeSpeed * delta;
-                        c.material.opacity = Math.max(0, Math.min(1, c.material.opacity)); // Clamp 0-1
-                    }
-                }
-            });
-
-            if (complete) {
-                // Remove da lista de animação
-                fadingMeshes.splice(i, 1);
-
-                if (mesh.userData.removeOnComplete) {
-                    // FADE OUT COMPLETO: Remove da cena 3D
-                    scene.remove(mesh);
-                } else {
-                    // FADE IN COMPLETO: Otimização
-                    // Desliga transparência para ganhar performance e evitar bugs de z-buffer
-                    mesh.traverse(c => {
-                        if (c.isMesh && c.material) c.material.transparent = false;
-                    });
-                }
-            }
-        }
-    }
-};
 
 // --- EXPOR FUNÇÕES PARA O HTML (WINDOW) ---
 // Como é um módulo, o escopo é local. Precisamos pendurar no window o que o HTML chama via onclick.
@@ -245,7 +171,15 @@ socket.on('update_stats', (data) => {
 });
 
 socket.on('player_joined', (data) => { if(data.id !== socket.id) addOtherPlayer(data); });
-socket.on('player_left', (id) => { if(otherPlayers[id]) { FadeManager.fadeOutAndRemove(otherPlayers[id]); delete otherPlayers[id]; } });
+
+socket.on('player_left', (id) => { 
+    if(otherPlayers[id]) { 
+        // --- CORREÇÃO AQUI: Passar 'scene' como 2º argumento ---
+        FadeManager.fadeOutAndRemove(otherPlayers[id], scene); 
+        
+        delete otherPlayers[id]; 
+    } 
+});
 
 socket.on('player_moved', d => {
     if(d.id === socket.id) return;
@@ -352,12 +286,16 @@ socket.on('monsters_update', (pack) => {
 });
 
 socket.on('monster_dead', (id) => { 
-    // Se o monstro que morreu é o meu alvo
     if(currentTargetId === id) {
-        currentTargetId = null; // Limpa o alvo
+        currentTargetId = null; 
         if(targetRing) targetRing.visible = false;
     }
-    if(monsters[id]) { FadeManager.fadeOutAndRemove(monsters[id]); delete monsters[id]; } 
+    if(monsters[id]) { 
+        // --- CORREÇÃO AQUI: Passar 'scene' como 2º argumento ---
+        FadeManager.fadeOutAndRemove(monsters[id], scene); 
+        
+        delete monsters[id]; 
+    } 
 });
 
 socket.on('chat_message', (data) => {
@@ -378,7 +316,10 @@ socket.on('damage_dealt', (d) => {
         pos = otherPlayers[d.targetId].position.clone();
     }
 
-    if (pos) showDamageNumber(d.damage, pos, color);
+     if (pos) {
+        // --- CORREÇÃO AQUI: Passar 'camera' como 4º argumento ---
+        showDamageNumber(d.damage, pos, color, camera); 
+    }
 });
 
 // ... Socket Events ...
@@ -391,25 +332,22 @@ function initEngine() {
     if (renderer) return;
 
     clock = new THREE.Clock();
+    
+    // 1. CRIA A CENA PRIMEIRO
     scene = new THREE.Scene(); 
     const skyColor = 0x87CEEB; 
-    
     scene.background = new THREE.Color(skyColor);
-
-    // Adicionamos a Neblina
-    // THREE.Fog(cor, distancia_inicio, distancia_fim)
-    // Start (20): A neblina começa a aparecer a 20 metros do jogador (visão clara).
-    // End (50): A 50 metros, tudo fica 100% da cor do céu, escondendo o fim do mapa.
-    scene.fog = new THREE.Fog(skyColor, 10, 40);
+    scene.fog = new THREE.Fog(skyColor, 5, 35);
 
     environmentLayer = new THREE.Group();
     scene.add(environmentLayer);
 
+    // 2. CONFIGURA CÂMERA E RENDERER
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, 5, 8);
     camera.lookAt(0, 0, 0);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
@@ -417,29 +355,29 @@ function initEngine() {
 
     UI.canvasContainer.appendChild(renderer.domElement);
 
+    // 3. LUZES
     const ambient = new THREE.AmbientLight(0xffffff, 0.8);
     scene.add(ambient);
 
     const dir = new THREE.DirectionalLight(0xffffff, 0.6);
     dir.position.set(20, 50, 20);
-    dir.castShadow = true;
-    dir.shadow.mapSize.width = 1024;
+    dir.castShadow = false;
+    dir.shadow.mapSize.width = 1024; // Sombra otimizada
     dir.shadow.mapSize.height = 1024;
-
-    // CORREÇÃO DO SERRILHADO (Shadow Acne):
-    // O bias empurra a sombra um pouquinho para longe da superfície
     dir.shadow.bias = -0.0020;
-
     dir.shadow.camera.near = 0.5;
     dir.shadow.camera.far = 100;
     const d = 30;
     dir.shadow.camera.left = -d; dir.shadow.camera.right = d;
     dir.shadow.camera.top = d; dir.shadow.camera.bottom = -d;
     scene.add(dir);
-    targetRing = createTargetIndicator(); // <--- CRIA O ANEL
 
-    // CONFIGURA INPUTS
-// --- LÓGICA CENTRAL DE ESTADO DO CHAT ---
+    // 4. AGORA SIM: CRIA O ANEL (A cena já existe aqui!)
+    // --- ESTA LINHA CAUSAVA O ERRO SE ESTIVESSE NO TOPO ---
+    targetRing = createTargetIndicator(scene); 
+    // ------------------------------------------------------
+
+    // CONFIGURA INPUTS (Chat e Movimento)
     const updateChatState = (isActive) => {
         setChatActive(isActive);   
         toggleChatFocus(isActive); 
@@ -451,52 +389,34 @@ function initEngine() {
                 socket.emit('player_update', { position: myPlayer.position, rotation: myPlayer.rotation.y, animation: 'IDLE' });
             }
         } else {
-            // Quando sai do chat, reseta o índice do histórico
             historyIndex = -1;
         }
     };
 
-    // 1. EVENTOS NATIVOS (DOM)
     UI.chatInput.addEventListener('focus', () => updateChatState(true));
     UI.chatInput.addEventListener('blur', () => updateChatState(false));
 
-// --- CONTROLE DE TECLAS NO INPUT (Histórico + ESC) ---
     UI.chatInput.addEventListener('keydown', (e) => {
-        
-        // 1. FECHAR COM ESC
         if (e.key === 'Escape') {
-            e.preventDefault(); // Evita qualquer comportamento padrão
-            UI.chatInput.blur(); // Tira o foco -> Dispara o evento 'blur' -> Libera o WASD
+            e.preventDefault(); 
+            UI.chatInput.blur(); 
             return;
         }
-
-        // 2. NAVEGAÇÃO DO HISTÓRICO
         const isUp = (e.key === 'ArrowUp');
         const isDown = (e.key === 'ArrowDown');
-
         if (isUp || isDown) {
-            // Se segurar Shift, deixa o navegador selecionar texto
             if (e.shiftKey) return; 
-
             e.preventDefault(); 
-            
             if (myMsgHistory.length === 0) return;
 
             if (isUp) {
-                // Seta para CIMA
-                if (historyIndex === -1) {
-                    historyIndex = myMsgHistory.length - 1;
-                } else if (historyIndex > 0) {
-                    historyIndex--;
-                }
+                if (historyIndex === -1) historyIndex = myMsgHistory.length - 1;
+                else if (historyIndex > 0) historyIndex--;
                 UI.chatInput.value = myMsgHistory[historyIndex];
             } 
             else if (isDown) {
-                // Seta para BAIXO
                 if (historyIndex === -1) return; 
-
                 historyIndex++; 
-                
                 if (historyIndex >= myMsgHistory.length) {
                     historyIndex = -1;
                     UI.chatInput.value = "";
@@ -506,55 +426,29 @@ function initEngine() {
             }
         }
     });
-    // -------------------------------------------------------
 
-// 2. CONFIGURAÇÃO DE INPUTS (Teclado Global)
     setupInputs(
-        // Callback da tecla ENTER
         () => {
-            // Verifica se o chat está ABERTO (Focado)
             if (document.activeElement === UI.chatInput) {
                 const txt = UI.chatInput.value.trim();
-                
                 if (txt !== "") {
-                    // --- CASO 1: TEM TEXTO ---
-                    // 1. Envia a mensagem
                     socket.emit('chat_message', txt);
-                    
-                    // 2. Salva no Histórico
                     myMsgHistory.push(txt);
                     if (myMsgHistory.length > MAX_HISTORY) myMsgHistory.shift();
-                    
-                    // 3. Limpa o campo e reseta histórico
                     UI.chatInput.value = "";
                     historyIndex = -1;
-                    
-                    // 4. IMPORTANTE: NÃO FAZ BLUR.
-                    // O foco continua no chat. O jogador continua travado para digitar a próxima.
-                    // Se ele quiser sair, ele aperta Enter novamente (caindo no Caso 2) ou clica fora.
-
                 } else {
-                    // --- CASO 2: CAMPO VAZIO ---
-                    // O jogador apertou Enter apenas para fechar o chat.
                     UI.chatInput.blur(); 
-                    // Isso dispara o evento 'blur' lá em cima, liberando o movimento.
                 }
-
             } else {
-                // Se o chat estava FECHADO, abre e foca.
                 UI.chatInput.focus(); 
-                // Isso dispara o evento 'focus' lá em cima, travando o movimento.
             }
         },
-        // Callback do Space (Mantém igual, com cooldown)
         () => {
             if(getIsChatActive() || isAttacking || !myPlayer) return;
-
             const now = Date.now();
             if (now - lastSitTime < 300) return; 
-            
             lastSitTime = now;
-            
             isSitting = !isSitting;
             const anim = isSitting ? 'SIT' : 'IDLE';
             playAnim(myPlayer, anim);
@@ -562,7 +456,6 @@ function initEngine() {
         }
     );
 
-    // Evento de Resize (Mantém igual)
     window.addEventListener('resize', () => { 
         if(!camera || !renderer) return;
         camera.aspect = window.innerWidth/window.innerHeight; 
@@ -906,158 +799,8 @@ function addMonster(data) {
     // Efeito de entrada suave
     FadeManager.fadeIn(mesh);
 }
-
-// --- VISUAL FX ---
-function createTextSprite(text, color) {
-    const c = document.createElement('canvas'); c.width = 256; c.height = 64;
-    const ctx = c.getContext('2d'); ctx.font = "bold 32px Arial"; ctx.fillStyle = color; ctx.textAlign = "center";
-    ctx.strokeStyle = 'black'; ctx.lineWidth = 3; ctx.strokeText(text, 128, 40); ctx.fillText(text, 128, 40);
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c) }));
-    s.scale.set(2, 0.5, 1); return s;
-}
-
-// public/game.js
-
-function createChatBubble(mesh, text) {
-    if(mesh.userData.activeBubble) { 
-        mesh.remove(mesh.userData.activeBubble); 
-        mesh.userData.activeBubble = null; 
-    }
-
-    const canvas = document.createElement('canvas'); 
-    const ctx = canvas.getContext('2d');
-    const fontSize = 18; 
-    const maxW = 350; 
-    const pad = 15;
-
-    ctx.font = `bold ${fontSize}px Arial`;
-
-    // --- NOVO ALGORITMO DE QUEBRA DE PALAVRAS ---
-    const rawWords = text.split(' ');
-    const processedWords = [];
-
-    // 1. Processa palavras gigantes (tipo "aaaaaaaa...")
-    for (let w of rawWords) {
-        const width = ctx.measureText(w).width;
-        if (width <= maxW) {
-            processedWords.push(w);
-        } else {
-            // Palavra é maior que o balão inteiro! Vamos fatiar.
-            let temp = "";
-            for (let char of w) {
-                // Testa se a parte atual + próxima letra + hífen cabe
-                if (ctx.measureText(temp + char + "-").width < maxW) {
-                    temp += char;
-                } else {
-                    // Não cabe mais, fecha essa parte com hífen e começa outra
-                    processedWords.push(temp + "-");
-                    temp = char;
-                }
-            }
-            if (temp) processedWords.push(temp); // Adiciona o resto que sobrou
-        }
-    }
-
-    // 2. Monta as linhas finais combinando as palavras processadas
-    let lines = [];
-    let currentLine = processedWords[0];
-
-    for (let i = 1; i < processedWords.length; i++) {
-        const word = processedWords[i];
-        const testLine = currentLine + " " + word;
-        
-        // Se a linha combinada couber, junta. Se não, pula pra próxima.
-        if (ctx.measureText(testLine).width < maxW) {
-            currentLine = testLine;
-        } else {
-            lines.push(currentLine);
-            currentLine = word;
-        }
-    }
-    lines.push(currentLine);
-    // ---------------------------------------------
-
-    // Cálculo do tamanho final do balão baseado nas linhas geradas
-    let realWidth = 0;
-    lines.forEach(line => { 
-        const metrics = ctx.measureText(line); 
-        if (metrics.width > realWidth) realWidth = metrics.width; 
-    });
-
-    const w = realWidth + (pad * 2); 
-    const h = (lines.length * 24) + (pad * 2);
-
-    canvas.width = w; 
-    canvas.height = h;
-
-    // Redesenha fundo e texto (pois redimensionar o canvas limpa ele)
-    ctx.fillStyle = "rgba(0,0,0,0.6)"; 
-    ctx.fillRect(0,0,w,h);
-    
-    ctx.font = `bold ${fontSize}px Arial`; 
-    ctx.fillStyle = "white"; 
-    ctx.textAlign = "center"; 
-    ctx.textBaseline = "top";
-
-    lines.forEach((l, i) => ctx.fillText(l, w/2, pad + (i*24)));
-    
-    const texture = new THREE.CanvasTexture(canvas); 
-    texture.minFilter = THREE.LinearFilter;
-    
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
-    sprite.scale.set(w * 0.015, h * 0.015, 1); 
-    sprite.position.set(0, 3.2, 0); 
-    sprite.renderOrder = 999;
-    
-    mesh.add(sprite); 
-    mesh.userData.activeBubble = sprite;
-    
-    setTimeout(() => { 
-        if(mesh.userData.activeBubble===sprite) { 
-            mesh.remove(sprite); 
-            mesh.userData.activeBubble=null; 
-        } 
-    }, 6000);
-}
-
 // Referência ao container (cache para performance)
 const damageContainer = document.getElementById('damage-container');
-
-function showDamageNumber(dmg, position3D, colorStr) {
-    if (!damageContainer || !camera) return;
-
-    // 1. Projeta a posição 3D para coordenadas 2D da tela
-    // Clonamos para não alterar a posição original do monstro
-    const tempV = position3D.clone();
-    tempV.y += 2.0; // Põe o número um pouco acima da cabeça
-
-    // Matemática de projeção do Three.js
-    tempV.project(camera);
-
-    // Converte de espaço normalizado (-1 a +1) para pixels CSS
-    const x = (tempV.x * .5 + .5) * window.innerWidth;
-    const y = (-(tempV.y * .5) + .5) * window.innerHeight;
-
-    // Se estiver atrás da câmera, não desenha
-    if (tempV.z > 1) return;
-
-    // 2. Cria o elemento HTML
-    const el = document.createElement('div');
-    el.className = 'dmg-number';
-    el.textContent = dmg;
-    el.style.color = colorStr;
-    el.style.left = `${x}px`;
-    el.style.top = `${y}px`;
-
-    // 3. Adiciona ao DOM
-    damageContainer.appendChild(el);
-
-    // 4. Remove automaticamente após a animação CSS (0.8s) terminar
-    // Usamos setTimeout para garantir a limpeza da memória
-    setTimeout(() => {
-        if (el.parentNode) el.parentNode.removeChild(el);
-    }, 800);
-}
 
 // --- COLISÃO & LOOP ---
 function checkCollision(position, direction, distance) {
@@ -1066,26 +809,6 @@ function checkCollision(position, direction, distance) {
     raycaster.set(tempOrigin, direction);
     const intersects = raycaster.intersectObjects(environmentLayer.children, true);
     return (intersects.length > 0 && intersects[0].distance < distance);
-}
-
-function createTargetIndicator() {
-    // Geometria de anel: raio interno, raio externo, segmentos
-    const geo = new THREE.RingGeometry(0.4, 0.5, 32); 
-    const mat = new THREE.MeshBasicMaterial({ 
-        color: 0xff0000, 
-        transparent: true, 
-        opacity: 0.6, 
-        side: THREE.DoubleSide // Para ver de cima e de baixo (caso o chão seja desnivelado)
-    });
-    const mesh = new THREE.Mesh(geo, mat);
-    
-    // Deita o anel no chão (rotação X de 90 graus)
-    mesh.rotation.x = -Math.PI / 2; 
-    mesh.position.set(0, 0.05, 0); // Levemente acima do chão para não bugar (Z-fighting)
-    mesh.visible = false; // Começa invisível
-    
-    scene.add(mesh);
-    return mesh;
 }
 
 function findBestTarget() {
