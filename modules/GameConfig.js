@@ -12,6 +12,61 @@ const BASE_ATTRIBUTES = {
 
 const RESPAWN_POINT = { map: 'vilarejo', x: 0, z: 0 };
 
+// --- TIPOS DE ITENS ---
+const ITEM_TYPES = {
+    CONSUMABLE: 'consumable', // Poções, Comidas
+    EQUIPMENT: 'equipment',   // Armas, Armaduras
+    MATERIAL: 'material'      // Drops, Quest items
+};
+
+const EQUIP_SLOTS = {
+    WEAPON: 'weapon',
+    ARMOR: 'armor',
+    HEAD: 'head',
+    LEGS: 'legs', // Botas
+    ACCESSORY: 'accessory'
+};
+
+// --- BANCO DE DADOS DE ITENS ---
+// A chave é o ID do item.
+const ITEM_DATABASE = {
+    // --- CONSUMÍVEIS (ID 1-99) ---
+    1: { 
+        id: 1, name: "Poção de Vida P", type: ITEM_TYPES.CONSUMABLE, 
+        icon: "pot_hp_s.png", description: "Recupera 50 HP",
+        effect: { hp: 50 } 
+    },
+    2: { 
+        id: 2, name: "Poção de Mana P", type: ITEM_TYPES.CONSUMABLE, 
+        icon: "pot_mp_s.png", description: "Recupera 30 MP",
+        effect: { mp: 30 } 
+    },
+
+    // --- EQUIPAMENTOS (ID 100-299) ---
+    100: { 
+        id: 100, name: "Espada de Madeira", type: ITEM_TYPES.EQUIPMENT, slot: EQUIP_SLOTS.WEAPON,
+        icon: "sword_wood.png", description: "Uma espada simples de treino.",
+        stats: { atk: 5 } // Dá +5 de Ataque direto
+    },
+    101: { 
+        id: 101, name: "Espada de Ferro", type: ITEM_TYPES.EQUIPMENT, slot: EQUIP_SLOTS.WEAPON,
+        icon: "sword_iron.png", description: "Lâmina afiada e pesada.",
+        stats: { atk: 15, str: 2 } // Dá +15 ATK e +2 de Força
+    },
+    200: {
+        id: 200, name: "Túnica de Linho", type: ITEM_TYPES.EQUIPMENT, slot: EQUIP_SLOTS.ARMOR,
+        icon: "armor_cloth.png", description: "Proteção básica.",
+        stats: { def: 3, hp: 20 } // Dá +3 DEF e +20 HP Máximo
+    },
+    
+    // --- MATERIAIS / DROPS (ID 300+) ---
+    300: { 
+        id: 300, name: "Gosma Verde", type: ITEM_TYPES.MATERIAL, 
+        icon: "slime_goo.png", description: "Restos de um Slime.",
+        price: 5 // Valor de venda no NPC
+    }
+};
+
 const MAP_CONFIG = {
     'vilarejo': {
         id: 'vilarejo', asset: 'mapa1.glb', pvp: false, mapSize: 30,
@@ -116,5 +171,8 @@ module.exports = {
     BASE_ATTRIBUTES,
     RESPAWN_POINT,
     MAP_CONFIG,
-    MONSTER_TYPES
+    MONSTER_TYPES,
+    ITEM_DATABASE,
+    ITEM_TYPES,
+    EQUIP_SLOTS
 };

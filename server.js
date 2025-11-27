@@ -1,13 +1,13 @@
 // --- server.js ---
 
+const { LEVEL_TABLE, BASE_ATTRIBUTES, RESPAWN_POINT, MAP_CONFIG, MONSTER_TYPES, ITEM_DATABASE, EQUIP_SLOTS, ITEM_TYPES } = require('./modules/GameConfig');
+
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const fs = require('fs');
 const path = require('path');
 
-// --- IMPORTAÇÕES NOVAS ---
-const { LEVEL_TABLE, BASE_ATTRIBUTES, RESPAWN_POINT, MAP_CONFIG, MONSTER_TYPES } = require('./modules/GameConfig');
 const Monster = require('./modules/Monster');
 
 const app = express();
@@ -37,24 +37,63 @@ const monsters = {};
 // --- FUNÇÕES DE RPG (Recalculate, XP) ---
 
 function recalculateStats(socket) {
-    const attrs = socket.attributes || { ...BASE_ATTRIBUTES };
+    // 1. Começa com os atributos base do personagem (distribuídos por pontos)
+    let totalStr = socket.attributes.str;
+    let totalAgi = socket.attributes.agi;
+    let totalInt = socket.attributes.int;
+    let totalVit = socket.attributes.vit;
+
+    // Variáveis para bônus diretos de equipamentos (ex: Espada que dá +10 ATK direto)
+    let bonusHp = 0, bonusMp = 0, bonusAtk = 0, bonusMatk = 0, bonusDef = 0, bonusEva = 0;
+
+    // 2. Percorre os equipamentos equipados
+    if (socket.equipment) {
+        Object.values(socket.equipment).forEach(itemId => {
+            if (!itemId) return; // Slot vazio
+
+            const itemData = ITEM_DATABASE[itemId];
+            if (!itemData || !itemData.stats) return; // Item inválido ou sem stats
+
+            const s = itemData.stats;
+
+            // Soma Atributos Primários (que escalam)
+            if(s.str) totalStr += s.str;
+            if(s.agi) totalAgi += s.agi;
+            if(s.int) totalInt += s.int;
+            if(s.vit) totalVit += s.vit;
+
+            // Soma Status Secundários (valores fixos)
+            if(s.hp) bonusHp += s.hp;
+            if(s.mp) bonusMp += s.mp;
+            if(s.atk) bonusAtk += s.atk;
+            if(s.matk) bonusMatk += s.matk;
+            if(s.def) bonusDef += s.def;
+            if(s.eva) bonusEva += s.eva;
+        });
+    }
+
+    // 3. Calcula os status derivados usando os TOTAIS (Base + Itens)
+    // Fórmulas atuais (você pode ajustar conforme seu game design)
+    const maxHp = 100 + (totalVit * 10) + bonusHp;
+    const maxMp = 50 + (totalInt * 10) + bonusMp;
     
-    const maxHp = 100 + (attrs.vit * 10);
-    const def = Math.floor(attrs.vit * 1);
+    const def = Math.floor(totalVit * 1) + bonusDef;
+    const matk = Math.floor(totalInt * 2) + bonusMatk;
     
-    const maxMp = 50 + (attrs.int * 10);
-    const matk = Math.floor(attrs.int * 2);
+    const atk = 10 + (totalStr * 2) + bonusAtk;
+    const eva = Math.floor((totalStr * 0.1) + (totalAgi * 0.5)) + bonusEva;
     
-    const atk = 10 + (attrs.str * 2);
-    const eva = Math.floor((attrs.str * 0.1) + (attrs.agi * 0.5));
-    
-    const attackSpeed = Math.max(500, 2000 - (attrs.agi * 20)); 
-    
+    const attackSpeed = Math.max(500, 2000 - (totalAgi * 20)); 
+
+    // 4. Salva no socket
     socket.stats = {
         ...socket.stats,
-        maxHp, maxMp, atk, matk, def, eva, attackSpeed
+        maxHp, maxMp, atk, matk, def, eva, attackSpeed,
+        // Guardamos os totais para exibir na UI "C" depois (Força: 50 + 5)
+        totalAttributes: { str: totalStr, agi: totalAgi, int: totalInt, vit: totalVit }
     };
     
+    // Cura se o HP atual for maior que o novo máximo (ex: trocou equip que dava HP)
     if (socket.stats.hp > maxHp) socket.stats.hp = maxHp;
     if (socket.stats.mp > maxMp) socket.stats.mp = maxMp;
 }
@@ -78,6 +117,16 @@ function gainExperience(socket, amount) {
         });
         socket.emit('level_up_event', { level: socket.level });
     }
+    sendStatsUpdate(socket);
+}
+
+function sendInventoryUpdate(socket) {
+    socket.emit('inventory_update', {
+        inventory: socket.inventory,
+        equipment: socket.equipment
+    });
+    // Como equipar muda status (HP/ATK), mandamos update de stats junto
+    recalculateStats(socket); 
     sendStatsUpdate(socket);
 }
 
@@ -172,8 +221,16 @@ function spawnInitialMonsters() {
 function savePlayerState(socket) {
     if (!socket.username || !accounts[socket.username]) return;
     accounts[socket.username].data = {
-        map: socket.map, position: socket.position, stats: socket.stats,
-        level: socket.level, xp: socket.xp, points: socket.pointsToDistribute, attributes: socket.attributes
+        map: socket.map, 
+        position: socket.position, 
+        stats: socket.stats,
+        level: socket.level, 
+        xp: socket.xp, 
+        points: socket.pointsToDistribute, 
+        attributes: socket.attributes,
+        // NOVOS CAMPOS:
+        inventory: socket.inventory,
+        equipment: socket.equipment
     };
     saveAccounts();
 }
@@ -282,6 +339,8 @@ io.on('connection', (socket) => {
                 data: { 
                     map: 'vilarejo', position: { x: 0, y: 0, z: 0 }, 
                     stats: { hp: 100, mp: 50, cash: 0 },
+                    inventory: [], // Array de objetos { id: 1, qtd: 5 }
+                    equipment: { weapon: null, armor: null, head: null, legs: null, accessory: null },
                     level: 1, xp: 0, points: 0, attributes: { ...BASE_ATTRIBUTES }
                 } 
             };
@@ -307,6 +366,8 @@ io.on('connection', (socket) => {
             socket.xp = savedData.xp || 0;
             socket.pointsToDistribute = savedData.points || 0;
             socket.attributes = savedData.attributes || { ...BASE_ATTRIBUTES };
+            socket.inventory = savedData.inventory || [];
+            socket.equipment = savedData.equipment || { weapon: null, armor: null, head: null, legs: null, accessory: null };            
             socket.nextLevelXp = LEVEL_TABLE[socket.level] || 100;
             socket.stats = { ...savedData.stats };
 
@@ -333,7 +394,8 @@ io.on('connection', (socket) => {
 
             socket.emit('login_success', {
                 playerId: socket.id, playerData: myData, mapConfig: MAP_CONFIG[socket.map],
-                mapPlayers: mapPlayers, mapMonsters: mapMonsters, monsterTypes: MONSTER_TYPES
+                mapPlayers: mapPlayers, mapMonsters: mapMonsters, monsterTypes: MONSTER_TYPES, itemDB: ITEM_DATABASE,
+                inventory: socket.inventory, equipment: socket.equipment
             });
             
             socket.broadcast.to(socket.map).emit('player_joined', getPublicPlayerData(socket));
@@ -342,7 +404,7 @@ io.on('connection', (socket) => {
         }
     });
 
-socket.on('player_update', (data) => {
+    socket.on('player_update', (data) => {
         // Verifica se o player existe
         if (!onlinePlayers[socket.id]) return;
 
@@ -399,7 +461,7 @@ socket.on('player_update', (data) => {
         }
     });    
 
-socket.on('attack_request', () => {
+    socket.on('attack_request', () => {
         if (!onlinePlayers[socket.id]) return;
         const attacker = onlinePlayers[socket.id];
         const ATTACK_RANGE = 1.5; 
@@ -473,7 +535,89 @@ socket.on('attack_request', () => {
         }
     });
 
+    // 1. USAR ITEM (Consumível ou Equipar via clique)
+    socket.on('use_item', (slotIndex) => {
+        if (!socket.inventory[slotIndex]) return;
+        
+        const item = socket.inventory[slotIndex];
+        const dbItem = ITEM_DATABASE[item.id];
+        
+        if (!dbItem) return;
+
+        // Se for EQUIPAMENTO, tenta equipar
+        if (dbItem.type === ITEM_TYPES.EQUIPMENT) {
+            const slot = dbItem.slot; // weapon, armor, etc
+            
+            // Verifica se já tem algo no slot
+            const currentEquippedId = socket.equipment[slot];
+            
+            // 1. Equipa o novo
+            socket.equipment[slot] = item.id;
+            
+            // 2. Remove o novo da mochila
+            socket.inventory.splice(slotIndex, 1);
+            
+            // 3. Se tinha algo velho equipado, devolve pra mochila
+            if (currentEquippedId) {
+                socket.inventory.push({ id: currentEquippedId, qtd: 1 });
+            }
+            
+            sendInventoryUpdate(socket);
+        }
+        
+        // Se for CONSUMÍVEL (Poção)
+        else if (dbItem.type === ITEM_TYPES.CONSUMABLE) {
+            // Aplica efeitos
+            if (dbItem.effect.hp) socket.stats.hp = Math.min(socket.stats.maxHp, socket.stats.hp + dbItem.effect.hp);
+            if (dbItem.effect.mp) socket.stats.mp = Math.min(socket.stats.maxMp, socket.stats.mp + dbItem.effect.mp);
+            
+            // Remove 1 unidade
+            item.qtd--;
+            if (item.qtd <= 0) {
+                socket.inventory.splice(slotIndex, 1);
+            }
+            
+            sendInventoryUpdate(socket);
+        }
+    });
+
+    // 2. DESEQUIPAR
+    socket.on('unequip_item', (slotName) => {
+        const itemId = socket.equipment[slotName];
+        if (!itemId) return;
+
+        // Tira do slot
+        socket.equipment[slotName] = null;
+        
+        // Põe na mochila
+        socket.inventory.push({ id: itemId, qtd: 1 });
+        
+        sendInventoryUpdate(socket);
+    });    
+
     socket.on('chat_message', (msg) => {
+        // Adicione esta verificação de comando:
+        if (msg.startsWith('/give ')) {
+            const parts = msg.split(' ');
+            const id = parseInt(parts[1]);
+            const qtd = parseInt(parts[2]) || 1;
+            
+            if (ITEM_DATABASE[id]) {
+                // Verifica se já tem o item para empilhar (se não for equip)
+                const existing = socket.inventory.find(i => i.id === id);
+                const isEquip = ITEM_DATABASE[id].type === ITEM_TYPES.EQUIPMENT;
+                
+                if (existing && !isEquip) {
+                    existing.qtd += qtd;
+                } else {
+                    socket.inventory.push({ id: id, qtd: qtd });
+                }
+                
+                sendInventoryUpdate(socket);
+                socket.emit('chat_message', { username: 'SISTEMA', message: `Você recebeu: ${ITEM_DATABASE[id].name}`, type: 'system' });
+                return; // Não manda pro chat global
+            }
+        }
         if(onlinePlayers[socket.id]) io.to(socket.map).emit('chat_message', { username: socket.username, message: msg, id: socket.id });
     });
 

@@ -42,7 +42,8 @@ let mapProps = [];
 let targetRing = null; // O objeto visual 3D do anel
 let currentTargetId = null; // Quem é o meu alvo atual (objeto do monstro ou player)
 let frameCount = 0;
-let lastFpsTime = 0; 
+let lastFpsTime = 0;
+let itemDB = {};
 
 const pendingLoads = new Set();
 
@@ -82,11 +83,10 @@ const fadingMeshes = []; // Lista de objetos sendo animados (fade in ou out)
 
 // --- EXPOR FUNÇÕES PARA O HTML (WINDOW) ---
 // Como é um módulo, o escopo é local. Precisamos pendurar no window o que o HTML chama via onclick.
-
 window.toggleForms = toggleForms;
 window.toggleStatusWindow = () => {
-    // Antes de abrir, injeta os dados atuais no UIManager
-    setupStatusWindowData(myAttributes, myPoints);
+    // Agora passamos 'myStats' (que contem o ATK total vindo do servidor)
+    setupStatusWindowData(myAttributes, myPoints, myStats); 
     toggleStatusWindow();
 };
 window.changeAttr = changeAttr; // Função importada do UIManager
@@ -112,6 +112,29 @@ window.confirmStats = () => {
     const newAttrs = getTempAttributes(); 
     socket.emit('distribute_points', newAttrs);
     toggleStatusWindow(); // Fecha a janela
+};
+
+window.toggleInventory = () => {
+    const el = document.getElementById('inventory-window');
+    const tooltip = document.getElementById('item-tooltip'); // Pega o tooltip
+
+    if (el.style.display === 'none') {
+        el.style.display = 'block';
+    } else {
+        el.style.display = 'none';
+        
+        // ADICIONE ISSO:
+        // Se fechar a janela, esconde o tooltip na marra
+        if (tooltip) tooltip.style.display = 'none';
+    }
+};
+
+window.useItem = (index) => {
+    socket.emit('use_item', index);
+};
+
+window.unequipItem = (slot) => {
+    socket.emit('unequip_item', slot);
 };
 
 // --- AUDIO ---
@@ -146,6 +169,12 @@ socket.on('login_success', (data) => {
     initEngine(); 
     updateHUD(myStats, myLevel, myXp, myNextXp); 
     loadMap(data.mapConfig, data.playerData, data.mapPlayers, data.mapMonsters);
+    itemDB = data.itemDB; // Salva o DB
+    UI.updateInventory(data.inventory, data.equipment, itemDB); // Atualiza UI inicial    
+});
+
+socket.on('inventory_update', (data) => {
+    UI.updateInventory(data.inventory, data.equipment, itemDB);
 });
 
 // --- SOCKET EVENTS (GAMEPLAY) ---
@@ -179,7 +208,7 @@ socket.on('player_left', (id) => {
     if (pendingLoads.has(id)) {
         pendingLoads.delete(id);
     }
-
+aaaaaaaaaaaaaaaaaaa
     if(otherPlayers[id]) { 
         FadeManager.fadeOutAndRemove(otherPlayers[id], scene); 
         delete otherPlayers[id]; 

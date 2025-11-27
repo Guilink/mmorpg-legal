@@ -29,22 +29,18 @@
         </div>
     </div>
 
-<!-- LOADING -->
+    <!-- LOADING -->
     <div id="loading-screen">
         <h2>VIAJANDO PARA...</h2>
         <h1 id="map-name" style="font-size: 40px; margin: 10px 0;">---</h1>
-        
-        <!-- NOVA BARRA DE PROGRESSO -->
         <div class="loading-bar-container">
             <div id="loading-bar-fill"></div>
         </div>
         <div id="loading-percent">0%</div>
-        <!-- ----------------------- -->
-
         <p>Carregando terreno e entidades...</p>
     </div>
 
-<!-- HUD -->
+    <!-- HUD (Barras de Vida/Mana/XP) -->
     <div id="hud" style="display: none;">
         <!-- Level e XP -->
         <div class="level-box">
@@ -60,15 +56,17 @@
             <div class="stat-row"><span>MP</span> <span id="mp-text">Loading...</span></div>
             <div class="progress-bg"><div id="mp-bar" class="progress-fill mp-fill" style="width: 100%"></div></div>
         </div>
-
-        <!-- Botão Status -->
-        <div id="btn-status" onclick="toggleStatusWindow()">S</div>
     </div>
 
-    <!-- JANELA DE STATUS (Nova) -->
+    <!-- BOTÕES LATERAIS (Separado do HUD para alinhar perfeito) -->
+    <div class="hud-buttons" id="hud-buttons" style="display: none;">
+        <div id="btn-status" onclick="toggleStatusWindow()">S</div>
+        <div id="btn-inventory" onclick="toggleInventory()">I</div>
+    </div>
+
+    <!-- JANELA DE STATUS -->
     <div id="status-window" style="display: none;">
         <div class="win-header">ATRIBUTOS</div>
-        
         <div class="win-content">
             <div class="points-row">Pontos Disponíveis: <span id="st-points" style="color:#0ff">0</span></div>
 
@@ -124,7 +122,44 @@
         </div>
     </div>
 
-    <!-- NOVO: Painel de Debug (Canto Superior Direito) -->
+    <!-- JANELA DE INVENTÁRIO (NOVA) -->
+    <div id="inventory-window" style="display: none;">
+        <div class="win-header">EQUIPAMENTOS</div>
+        <div class="equip-grid">
+            <!-- Slots de Equipamento -->
+            <div class="slot-container">
+                <div class="slot-label">Arma</div>
+                <div id="eq-weapon" class="item-slot" onclick="unequipItem('weapon')"></div>
+            </div>
+            <div class="slot-container">
+                <div class="slot-label">Cabeça</div>
+                <div id="eq-head" class="item-slot" onclick="unequipItem('head')"></div>
+            </div>
+            <div class="slot-container">
+                <div class="slot-label">Peito</div>
+                <div id="eq-armor" class="item-slot" onclick="unequipItem('armor')"></div>
+            </div>
+            <div class="slot-container">
+                <div class="slot-label">Pernas</div>
+                <div id="eq-legs" class="item-slot" onclick="unequipItem('legs')"></div>
+            </div>
+            <div class="slot-container">
+                <div class="slot-label">Acess.</div>
+                <div id="eq-accessory" class="item-slot" onclick="unequipItem('accessory')"></div>
+            </div>
+        </div>
+
+        <div class="win-header" style="margin-top: 10px;">MOCHILA</div>
+        <div id="bag-grid" class="bag-grid">
+            <!-- Slots gerados via JS -->
+        </div>
+
+        <div class="win-footer">
+            <button class="btn-cancel" onclick="toggleInventory()">FECHAR</button>
+        </div>
+    </div>
+
+    <!-- DEBUG PANEL -->
     <div id="debug-panel" style="display: none;">
         <div>FPS: <span id="dbg-fps" style="color: #ffff00">0</span></div>
         <div>MAPA: <span id="dbg-map">---</span></div>
@@ -136,14 +171,17 @@
     <div id="chat-container" style="display: none; opacity: 0.5;">
         <div id="chat-history"></div>
         <div class="chat-input-wrapper">
-            <!-- public/index.html -->
-        <input type="text" id="chat-input" maxlength="120" placeholder="Tecle 'Enter' para conversar e 'Esc' para sair..." autocomplete="off">
+            <input type="text" id="chat-input" maxlength="120" placeholder="Tecle 'Enter' para conversar..." autocomplete="off">
         </div>
     </div>
 
+    <!-- CANVAS 3D -->
     <div id="canvas-container"></div>
-
+    <!-- DANOS FLUTUANTES -->
     <div id="damage-container"></div>
+
+    <!-- MOVA O TOOLTIP PARA CÁ (Fora de tudo, direto no body) -->
+    <div id="item-tooltip" style="display:none;"></div>
 
     <!-- LIBS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>

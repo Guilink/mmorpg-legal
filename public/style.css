@@ -1,10 +1,9 @@
 * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
 body { overflow: hidden; background: #000; }
 
-/* TELA DE LOGIN - IMAGEM DE VOLTA */
+/* TELA DE LOGIN */
 #login-screen {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-    /* Correção aqui: */
     background: url('assets/login.png') no-repeat center center fixed;
     background-size: cover;
     display: flex; justify-content: center; align-items: center;
@@ -12,7 +11,7 @@ body { overflow: hidden; background: #000; }
 }
 
 .panel-box {
-    background: rgba(0, 0, 0, 0.85); /* Fundo um pouco mais escuro para ler melhor */
+    background: rgba(0, 0, 0, 0.85);
     padding: 40px; border-radius: 10px;
     border: 2px solid #00ffff; box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
     text-align: center; width: 350px;
@@ -36,6 +35,14 @@ body { overflow: hidden; background: #000; }
     background: #000; display: none; flex-direction: column;
     justify-content: center; align-items: center; color: #00ffff; z-index: 1500;
 }
+.loading-bar-container {
+    width: 300px; height: 20px; background-color: #333;
+    border: 2px solid #555; border-radius: 10px; margin: 15px auto; overflow: hidden;
+}
+#loading-bar-fill {
+    width: 0%; height: 100%; background-color: #00ff88; transition: width 0.2s ease-out;
+}
+#loading-percent { font-size: 14px; color: #ccc; font-weight: bold; }
 
 /* HUD */
 #hud { position: absolute; top: 10px; left: 10px; width: 300px; pointer-events: none; z-index: 100; }
@@ -48,43 +55,6 @@ body { overflow: hidden; background: #000; }
 .progress-fill { height: 100%; transition: width 0.2s; }
 .hp-fill { background: #ff3333; } .mp-fill { background: #3388ff; }
 
-.info-box {
-    background: rgba(0,0,0,0.6); color: #fff; padding: 10px;
-    border-radius: 5px; border: 1px solid #555; margin-top: 5px; font-size: 13px;
-}
-.money-text { color: #ffd700; font-weight: bold; }
-
-/* CHAT */
-#chat-container {
-    position: absolute; bottom: 10px; left: 10px; width: 400px; z-index: 100; transition: opacity 0.3s;
-}
-#chat-history {
-    height: 200px; overflow-y: auto; background: rgba(0,0,0,0.5);
-    padding: 10px; border-radius: 5px; color: white; font-size: 13px; margin-bottom: 5px;
-    scrollbar-width: thin;
-}
-#chat-input {
-    width: 100%; padding: 10px; background: rgba(0,0,0,0.7);
-    border: 1px solid #555; color: white; border-radius: 5px;
-}
-
-#debug-panel {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: rgba(0, 0, 0, 0.7);
-    color: #00ff00; /* Verde estilo terminal */
-    padding: 10px;
-    border-radius: 5px;
-    font-family: 'Courier New', monospace; /* Fonte monoespaçada para alinhar números */
-    font-size: 14px;
-    font-weight: bold;
-    z-index: 100;
-    pointer-events: none; /* Deixa clicar através dele */
-    border: 1px solid #005500;
-}
-
-/* LEVEL E XP NO HUD */
 .level-box { 
     display: flex; align-items: center; margin-bottom: 5px; 
     background: rgba(0,0,0,0.6); padding: 5px; border-radius: 5px; border: 1px solid #555;
@@ -99,41 +69,48 @@ body { overflow: hidden; background: #000; }
     height: 100%; background: #00ff00; width: 0%; transition: width 0.3s; 
 }
 
-/* BOTÃO 'S' */
-#btn-status {
-    width: 30px; 
-    height: 30px; 
-    background: #222; 
-    border: 2px solid #aaa; 
-    color: #fff;
-    text-align: center; 
-    line-height: 26px; 
-    font-weight: bold; 
-    cursor: pointer;
-    margin-top: 10px; 
-    border-radius: 4px; 
-    transition: 0.2s;
-
-    /* --- ADICIONE ESTA LINHA --- */
-    pointer-events: auto; 
-    /* --------------------------- */
+/* --- BOTÕES LATERAIS (STATUS / INVENTÁRIO) --- */
+.hud-buttons {
+    position: fixed !important;
+    top: 130px; 
+    left: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 500;
+    pointer-events: auto;
 }
 
-#btn-status:hover { background: #444; border-color: #fff; }
+#btn-status, #btn-inventory {
+    position: static !important; margin: 0 !important;
+    width: 35px; height: 35px; 
+    background: #222; border: 2px solid #777; color: #fff;
+    text-align: center; line-height: 31px; font-weight: bold; 
+    cursor: pointer; border-radius: 4px; 
+    transition: 0.2s;
+    font-size: 14px;
+    font-family: sans-serif;
+}
+#btn-status:hover, #btn-inventory:hover { 
+    background: #444; border-color: #ffd700; color: #ffd700; 
+}
 
-/* JANELA DE STATUS */
-#status-window {
+/* JANELAS (STATUS E INVENTÁRIO) */
+#status-window, #inventory-window {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    width: 280px; background: rgba(0,0,0,0.9); border: 2px solid #00ffff;
-    border-radius: 8px; color: white; z-index: 2000; box-shadow: 0 0 20px #000;
+    width: 320px; background: rgba(0,0,0,0.95); border: 2px solid #ffd700;
+    border-radius: 8px; color: white; z-index: 2001; box-shadow: 0 0 20px #000;
     font-family: 'Segoe UI', sans-serif;
 }
+#status-window { width: 280px; border-color: #00ffff; }
+
 .win-header {
     background: #008888; color: white; padding: 10px; text-align: center; font-weight: bold;
 }
+#inventory-window .win-header { background: #006666; }
+
 .win-content { padding: 15px; }
 .points-row { text-align: center; margin-bottom: 15px; font-weight: bold; }
-
 .attr-row { 
     display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; 
 }
@@ -149,71 +126,92 @@ body { overflow: hidden; background: #000; }
 }
 .derived-stats span { color: #fff; font-weight: bold; }
 
-.win-footer { display: flex; gap: 10px; }
+.win-footer { display: flex; gap: 10px; padding: 10px; }
 .btn-confirm { flex: 1; background: #00aa00; border: none; padding: 8px; color: white; cursor: pointer; font-weight: bold; }
 .btn-cancel { flex: 1; background: #aa0000; border: none; padding: 8px; color: white; cursor: pointer; font-weight: bold; }
 
-/* Container da barra (fundo cinza escuro) */
-.loading-bar-container {
-    width: 300px;
-    height: 20px;
-    background-color: #333;
-    border: 2px solid #555;
-    border-radius: 10px;
-    margin: 15px auto; /* Centraliza */
-    overflow: hidden;
+/* INVENTÁRIO ESPECÍFICO */
+.equip-grid {
+    display: flex; justify-content: center; gap: 10px; padding: 10px; background: #111;
+}
+.slot-container { display: flex; flex-direction: column; align-items: center; }
+.slot-label { font-size: 10px; color: #aaa; margin-bottom: 2px; }
+
+.item-slot {
+    width: 40px; height: 40px; background: #222; border: 1px solid #444;
+    cursor: pointer; position: relative; display: flex; justify-content: center; align-items: center;
+}
+.item-slot:hover { border-color: #fff; background: #333; }
+.item-slot img { width: 32px; height: 32px; image-rendering: pixelated; }
+
+.bag-grid {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; padding: 10px;
+    max-height: 200px; overflow-y: auto; background: #1a1a1a;
+}
+.item-qtd {
+    position: absolute; bottom: 2px; right: 2px; font-size: 10px; font-weight: bold;
+    color: #fff; text-shadow: 1px 1px 0 #000; pointer-events: none;
 }
 
-/* O preenchimento da barra (verde ou azul) */
-#loading-bar-fill {
-    width: 0%;
-    height: 100%;
-    background-color: #00ff88; /* Verde neon */
-    transition: width 0.2s ease-out; /* Suaviza o movimento */
-}
-
-/* Texto da porcentagem */
-#loading-percent {
-    font-size: 14px;
-    color: #ccc;
-    font-weight: bold;
-}
-
-/* Container para os números de dano (Fica por cima do Canvas 3D) */
-#damage-container {
-    position: absolute;
-    top: 0;
+/* TOOLTIP DO ITEM */
+#item-tooltip {
+    position: fixed; 
+    top: 0; 
     left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none; /* Deixa clicar através dele */
-    overflow: hidden;
-    z-index: 50; /* Abaixo do HUD, acima do jogo */
+    
+    /* ADICIONE ESTAS DUAS LINHAS DE SEGURANÇA: */
+    right: auto !important;
+    bottom: auto !important;
+    
+    background: rgba(0, 0, 0, 0.95); 
+    border: 1px solid #ffd700;
+    padding: 10px; 
+    pointer-events: none; 
+    z-index: 9999; 
+    width: 220px; 
+    font-size: 12px;
+    box-shadow: 4px 4px 10px rgba(0,0,0,0.5);
+    display: none; 
+}
+#item-tooltip h3 { margin-bottom: 5px; font-size: 14px; }
+#item-tooltip .desc { color: #ccc; margin-bottom: 5px; font-style: italic; }
+#item-tooltip .stat { color: #0f0; display: block; }
+
+/* CHAT */
+#chat-container {
+    position: absolute; bottom: 10px; left: 10px; width: 400px; z-index: 100; transition: opacity 0.3s;
+}
+#chat-history {
+    height: 200px; overflow-y: auto; background: rgba(0,0,0,0.5);
+    padding: 10px; border-radius: 5px; color: white; font-size: 13px; margin-bottom: 5px;
+    scrollbar-width: thin;
+}
+#chat-input {
+    width: 100%; padding: 10px; background: rgba(0,0,0,0.7);
+    border: 1px solid #555; color: white; border-radius: 5px;
 }
 
-/* O estilo do número flutuante */
+/* DEBUG */
+#debug-panel {
+    position: absolute; top: 10px; right: 10px;
+    background: rgba(0, 0, 0, 0.7); color: #00ff00;
+    padding: 10px; border-radius: 5px; font-family: 'Courier New', monospace;
+    font-size: 14px; font-weight: bold; z-index: 100; pointer-events: none; border: 1px solid #005500;
+}
+
+/* DANOS FLUTUANTES */
+#damage-container {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; overflow: hidden; z-index: 50; 
+}
 .dmg-number {
-    position: absolute;
-    font-family: 'Segoe UI', Arial, sans-serif;
-    font-weight: bold;
-    font-size: 36px;
-    text-shadow: 2px 2px 0px #000; /* Borda preta para leitura */
-    user-select: none;
-    will-change: transform, opacity; /* Otimização para o navegador */
-    animation: floatUp 0.8s ease-out forwards; /* Animação CSS */
+    position: absolute; font-family: 'Segoe UI', Arial, sans-serif;
+    font-weight: bold; font-size: 36px; text-shadow: 2px 2px 0px #000;
+    user-select: none; will-change: transform, opacity;
+    animation: floatUp 0.8s ease-out forwards;
 }
-
-/* A animação de subir e sumir */
 @keyframes floatUp {
-    0% {
-        opacity: 1;
-        transform: translate(-50%, 0) scale(1);
-    }
-    50% {
-        transform: translate(-50%, -30px) scale(1.5); /* Sobe e cresce um pouco */
-    }
-    100% {
-        opacity: 0;
-        transform: translate(-50%, -60px) scale(1); /* Sobe mais e desaparece */
-    }
+    0% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    50% { transform: translate(-50%, -30px) scale(1.5); }
+    100% { opacity: 0; transform: translate(-50%, -60px) scale(1); }
 }
