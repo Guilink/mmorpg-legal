@@ -333,7 +333,7 @@ io.on('connection', (socket) => {
 
             socket.emit('login_success', {
                 playerId: socket.id, playerData: myData, mapConfig: MAP_CONFIG[socket.map],
-                mapPlayers: mapPlayers, mapMonsters: mapMonsters
+                mapPlayers: mapPlayers, mapMonsters: mapMonsters, monsterTypes: MONSTER_TYPES
             });
             
             socket.broadcast.to(socket.map).emit('player_joined', getPublicPlayerData(socket));

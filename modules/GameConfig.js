@@ -18,8 +18,8 @@ const MAP_CONFIG = {
         offset: { x: 0.5, y: 0, z: 0.5 },
         portals: [{ x: -2.10, z: 13.45, radius: 1.0, targetMap: 'floresta', targetX: 0, targetZ: 0 }],
         monsterSpawns: [
-            { type: 'pve1', count: 3, area: { x: 0, z: 0, radius: 8 } },
-            { type: 'bat', count: 5, area: { x: 0, z: 0, radius: 8 } },
+            { type: 'bolota', count: 4, area: { x: 0, z: 0, radius: 8 } },
+            { type: 'morcego', count: 4, area: { x: 0, z: 0, radius: 8 } },
         ] 
     },
     'floresta': {
@@ -27,16 +27,73 @@ const MAP_CONFIG = {
         offset: { x: 0, y: 0, z: 0 },
         portals: [{ x: 0, z: 8.5, radius: 1.0, targetMap: 'vilarejo', targetX: 0, targetZ: 0 }],
         monsterSpawns: [
-            { type: 'bat', count: 3, area: { x: 0, z: 0, radius: 8 } },
-            { type: 'slime', count: 5, area: { x: -5, z: 5, radius: 6 } }
+            { type: 'verdinho', count: 4, area: { x: 0, z: 0, radius: 8 } },
+            { type: 'cogumelo', count: 4, area: { x: -5, z: 5, radius: 6 } },
+            { type: 'cogumelochefe', count: 1, area: { x: -5, z: 5, radius: 6 } }
         ]
     }
 };
 
 const MONSTER_TYPES = {
-    'slime': { hp: 1000, model: 'monster1', speed: 0.05, range: 1.0, attackSpeed: 2000, dmg: 10, xp: 20 },
-    'bat':   { hp: 1000, model: 'monster2', speed: 0.08, range: 1.0, attackSpeed: 1500, dmg: 16, xp: 35 },
-    'pve1':   { hp: 1000, model: 'pve1', speed: 0.12, range: 1.0, attackSpeed: 1000, dmg: 30, xp: 50 }
+    'bolota': { 
+        name: 'Bolota Cascavél',
+        model: 'm1_slimecobra', 
+        scale: 0.40,
+        hp: 80, maxHp: 80,
+        speed: 0.06,
+        range: 1.0,
+        attackSpeed: 1800,
+        dmg: 8,
+        xp: 15
+    },
+
+    'morcego': { 
+        name: 'Morcego',
+        model: 'm2_morcego', 
+        scale: 0.30,
+        hp: 130, maxHp: 130,
+        speed: 0.12,
+        range: 1.0,
+        attackSpeed: 1500,
+        dmg: 14,
+        xp: 30
+    },
+
+    'verdinho': { 
+        name: 'Verdinho',
+        model: 'm3_slimeverde', 
+        scale: 0.05,
+        hp: 300, maxHp: 300,
+        speed: 0.10,
+        range: 1.0,
+        attackSpeed: 1200,
+        dmg: 22,
+        xp: 50
+    },
+
+    'cogumelo': {
+        name: 'Cogulouco',
+        model: 'm4_cogumelo',
+        scale: 0.05,
+        hp: 900, maxHp: 900,
+        speed: 0.06,
+        range: 1.0,
+        attackSpeed: 2000,
+        dmg: 35,
+        xp: 120
+    },
+
+    'cogumelochefe': {
+        name: 'Mestre Cogulouco',
+        model: 'm4_cogumelo',
+        scale: 0.07,
+        hp: 2000, maxHp: 2000,
+        speed: 0.10,
+        range: 1.3,
+        attackSpeed: 1800,
+        dmg: 60,
+        xp: 300
+    }
 };
 
 module.exports = {

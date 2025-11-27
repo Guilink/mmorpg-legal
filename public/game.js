@@ -30,6 +30,7 @@ let myUsername = "";
 let otherPlayers = {};
 let monsters = {};
 let monsterTemplates = {}; 
+let globalMonsterTypes = {};
 let mapProps = [];
 let targetRing = null; // O objeto visual 3D do anel
 let currentTargetId = null; // Quem é o meu alvo atual (objeto do monstro ou player)
@@ -128,6 +129,7 @@ socket.on('login_success', (data) => {
     myNextXp = data.playerData.nextLevelXp || 100;
     myAttributes = data.playerData.attributes || { str:5, agi:5, int:5, vit:5 };
     myPoints = data.playerData.points || 0;
+    globalMonsterTypes = data.monsterTypes || {};
 
     initEngine(); 
     updateHUD(myStats, myLevel, myXp, myNextXp); 
@@ -534,19 +536,25 @@ function loadMap(mapConfig, myData, players, mobs) {
 
 // --- CACHE DE MODELOS DE MONSTROS (Otimizado) ---
     // Lista de monstros que precisamos carregar (baseado no mapeamento do server)
-    const monsterAssets = {
-        'monster1': 'assets/monster1.glb',
-        'monster2': 'assets/monster2.glb',
-        'pve1': 'assets/pve1.glb'
-    };
+    // 1. Descobre quais modelos únicos existem no jogo inteiro (ou poderia filtrar só pelo mapa)
+    const uniqueModels = new Set();
+    Object.values(globalMonsterTypes).forEach(conf => {
+        if(conf.model) uniqueModels.add(conf.model);
+    });
 
-    // Loop automático para carregar apenas o que falta
-    Object.keys(monsterAssets).forEach(key => {
-        if(!monsterTemplates[key]) {
-            toLoad++;
-            loader.load(monsterAssets[key], g => {
-                monsterTemplates[key] = g;
+    // 2. Loop automático para carregar os arquivos GLB necessários
+    uniqueModels.forEach(modelName => {
+        // Se ainda não carregamos este modelo...
+        if(!monsterTemplates[modelName]) {
+            toLoad++; // Aumenta contador de loading
+            
+            // O caminho agora é montado dinamicamente: assets/ + nome + .glb
+            loader.load(`assets/${modelName}.glb`, g => {
+                monsterTemplates[modelName] = g;
                 checkDone();
+            }, undefined, (err) => {
+                console.error(`Erro ao carregar monstro: ${modelName}`, err);
+                checkDone(); // Chama done mesmo com erro para não travar o load
             });
         }
     });
@@ -735,27 +743,27 @@ function addOtherPlayer(data) {
 function addMonster(data) {
     if(monsters[data.id]) return;
 
-    // --- NOVA LÓGICA DE SELEÇÃO ---
-    // Aqui você define qual 'type' do servidor usa qual nome de template carregado
-    const modelMap = {
-        'slime': 'monster1',  // O tipo 'slime' usa o arquivo monster1
-        'bat':   'monster2',  // O tipo 'bat' usa o arquivo monster2
-        'pve1':  'pve1'       // O tipo 'pve1' usa o arquivo pve1
-    };
+    // 1. Pega a config centralizada
+    const typeConfig = globalMonsterTypes[data.type];
+    if (!typeConfig) return;
 
-    // Pega o nome do modelo baseado no tipo. Se não achar, usa 'monster1' pra não travar
-    const modelName = modelMap[data.type] || 'monster1';
+    // 2. Define o Modelo
+    const modelName = typeConfig.model; 
     const tpl = monsterTemplates[modelName];
-    // ------------------------------
 
-    if(!tpl) return; // Se o modelo ainda não carregou, ignora
+    if(!tpl) return; 
 
     const mesh = tpl.scene.clone();
     
-    // Configura o ID correto
     mesh.userData.id = data.id; 
+    mesh.userData.name = typeConfig.name;
 
-    mesh.scale.set(0.4, 0.4, 0.4);
+    // --- AQUI ESTÁ A MÁGICA DO SCALE ---
+    // Pega o scale do config. Se não tiver, usa 0.5 como padrão.
+    const s = typeConfig.scale || 0.5; 
+    mesh.scale.set(s, s, s);
+    // -----------------------------------
+
     mesh.traverse(c => { if(c.isMesh) { c.castShadow=true; c.receiveShadow=true; } });  
     
     setupAnimations(mesh, tpl.animations);
