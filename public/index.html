@@ -66,7 +66,10 @@
 
     <!-- JANELA DE STATUS -->
     <div id="status-window" style="display: none;">
-        <div class="win-header">ATRIBUTOS</div>
+    <div class="win-header">
+        <span>ATRIBUTOS</span>
+        <span class="close-btn" onclick="toggleStatusWindow()">&#10006;</span>
+    </div>
         <div class="win-content">
             <div class="points-row">Pontos Disponíveis: <span id="st-points" style="color:#0ff">0</span></div>
 
@@ -124,7 +127,10 @@
 
     <!-- JANELA DE INVENTÁRIO (NOVA) -->
     <div id="inventory-window" style="display: none;">
-        <div class="win-header">EQUIPAMENTOS</div>
+        <div class="win-header">
+        <span>EQUIPAMENTOS</span>
+        <span class="close-btn" onclick="toggleInventory()">&#10006;</span>
+        </div>
         <div class="equip-grid">
             <!-- Slots de Equipamento -->
             <div class="slot-container">

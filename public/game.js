@@ -11,8 +11,8 @@ import {
     addLogMessage, 
     toggleChatFocus, 
     toggleStatusWindow,
-    refreshStatusWindow,
     setupStatusWindowData,
+    refreshStatusWindow,
     changeAttr,
     getTempAttributes,
     updateLoadingBar // Necessário para enviar os dados alterados
@@ -185,7 +185,7 @@ socket.on('map_changed', (data) => {
 });
 
 socket.on('update_stats', (data) => {
-    myStats = data.stats;
+    myStats = data.stats; // Atualiza a variável global
     myLevel = data.level;
     myXp = data.xp;
     myNextXp = data.nextLevelXp;
@@ -194,11 +194,18 @@ socket.on('update_stats', (data) => {
     
     updateHUD(myStats, myLevel, myXp, myNextXp);
     
-    // Se a janela de status estiver aberta, atualizamos os pontos (mas cuidado para não resetar a edição do player)
-    // Aqui optamos por atualizar apenas o display de pontos para simplificar
+    // Atualiza o texto de pontos na janela se existir
     if(document.getElementById('st-points')) {
         document.getElementById('st-points').textContent = myPoints;
     }
+
+    // --- CORREÇÃO: ATUALIZA A JANELA DE STATUS EM TEMPO REAL ---
+    // Se a janela estiver visível, recalcula os bônus e atualiza os números na hora
+    if (UI.statusWindow.style.display !== 'none') {
+        setupStatusWindowData(myAttributes, myPoints, myStats);
+        refreshStatusWindow();
+    }
+    // -----------------------------------------------------------
 });
 
 socket.on('player_joined', (data) => { if(data.id !== socket.id) addOtherPlayer(data); });
@@ -504,7 +511,9 @@ function initEngine() {
                 performAttack(); 
                 lastAttackTime = now;
             }
-        }       
+        },
+        () => window.toggleStatusWindow(), // Alt+S chama a função global
+        () => window.toggleInventory()     // Alt+I chama a função global            
     );
 
     window.addEventListener('resize', () => { 

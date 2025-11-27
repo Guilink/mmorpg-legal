@@ -14,46 +14,51 @@ export function getIsChatActive() {
 }
 
 // A função principal com as novas regras de ataque
-export function setupInputs(onEnterPress, onSit, onAttack) { 
+export function setupInputs(onEnterPress, onSit, onAttack, onToggleStatus, onToggleInventory) { 
     document.addEventListener('keydown', e => {
-        // Bloqueia repetição automática de tecla segurada
         if (e.repeat) return; 
 
-        // 1. Lógica do Chat
-        if (isChatActive) {
-            // Se apertar Enter no chat, envia
-            if (e.key === 'Enter') {
-                if(onEnterPress) onEnterPress();
-            }
-            return; // Não faz mais nada se chat estiver aberto
+        // --- ATALHOS DE UI (Funcionam mesmo com chat aberto ou andando) ---
+        // Alt + S: Status
+        if (e.altKey && e.key.toLowerCase() === 's') {
+            e.preventDefault(); // Impede menu do navegador
+            if (onToggleStatus) onToggleStatus();
+            return;
         }
 
-        // 2. Abrir Chat
+        // Alt + I: Inventário
+        if (e.altKey && e.key.toLowerCase() === 'i') {
+            e.preventDefault();
+            if (onToggleInventory) onToggleInventory();
+            return;
+        }
+        // ----------------------------------------------------------------
+
+        if (isChatActive) {
+            if (e.key === 'Enter') if(onEnterPress) onEnterPress();
+            return;
+        }
+
         if(e.key === 'Enter') {
             if(onEnterPress) onEnterPress();
             return; 
         }
         
-        // 3. Registra tecla segurada para movimento e loop de ataque
         keys[e.key.toLowerCase()] = true;
 
-        // 4. Tecla Space (Sentar)
         if(e.code === 'Space') {
             if(onSit) onSit(); 
         }
 
-        // 5. Tecla F (Ataque - Evento Único)
-        // Garante o primeiro golpe instantâneo ao apertar
         if(e.key.toLowerCase() === 'f') {
             if(onAttack) onAttack();
         }
     });
 
     document.addEventListener('keyup', e => {
-        keys[e.key.toLowerCase()] = false;        
+        keys[e.key.toLowerCase()] = false;
     });
 
-    // Se o jogador clicar fora da tela ou der Alt-Tab, cancela todas as teclas
     window.addEventListener('blur', () => {
         for (let k in keys) keys[k] = false;
     });

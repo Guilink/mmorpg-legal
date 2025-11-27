@@ -307,3 +307,67 @@ function showTooltip(e, item) {
 function hideTooltip() {
     UI.tooltip.style.display = 'none';
 }
+
+function makeDraggable(elementId) {
+    const el = document.getElementById(elementId);
+    const header = el.querySelector('.win-header');
+    
+    let isDragging = false;
+    let startX, startY, initialLeft, initialTop;
+
+    header.onmousedown = function(e) {
+        e.preventDefault();
+        
+        // Traz a janela para frente das outras ao clicar
+        // (Simples hack de z-index: aumenta em 10 toda vez que clica)
+        el.style.zIndex = parseInt(window.getComputedStyle(el).zIndex) + 2;
+
+        isDragging = true;
+        
+        // Pega a posição do mouse inicial
+        startX = e.clientX;
+        startY = e.clientY;
+
+        // TRUQUE IMPORTANTE:
+        // O CSS usa 'transform: translate(-50%, -50%)' para centralizar.
+        // Ao arrastar, precisamos remover isso e usar left/top fixos em pixels.
+        
+        const rect = el.getBoundingClientRect();
+        
+        // Se ainda tiver transform, removemos e fixamos a posição atual
+        if (el.style.transform !== 'none') {
+            el.style.left = rect.left + 'px';
+            el.style.top = rect.top + 'px';
+            el.style.transform = 'none'; // Desliga a centralização automática
+            el.style.margin = 0;
+        }
+
+        initialLeft = el.offsetLeft;
+        initialTop = el.offsetTop;
+
+        // Eventos globais (no document) para não perder o arraste se o mouse sair rápido
+        document.onmousemove = onMouseMove;
+        document.onmouseup = onMouseUp;
+    };
+
+    function onMouseMove(e) {
+        if (!isDragging) return;
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        el.style.left = (initialLeft + dx) + 'px';
+        el.style.top = (initialTop + dy) + 'px';
+    }
+
+    function onMouseUp() {
+        isDragging = false;
+        document.onmousemove = null;
+        document.onmouseup = null;
+    }
+}
+
+// INICIALIZA O SISTEMA
+// (Chama a função para as janelas que queremos que sejam arrastáveis)
+makeDraggable('status-window');
+makeDraggable('inventory-window');

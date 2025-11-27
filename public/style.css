@@ -215,3 +215,38 @@ body { overflow: hidden; background: #000; }
     50% { transform: translate(-50%, -30px) scale(1.5); }
     100% { opacity: 0; transform: translate(-50%, -60px) scale(1); }
 }
+
+/* CABEÇALHO ARRASTÁVEL */
+.win-header {
+    background: #008888; 
+    color: white; 
+    padding: 10px; 
+    font-weight: bold;
+    /* Novas propriedades: */
+    display: flex; 
+    justify-content: space-between; /* Texto na esq, X na dir */
+    align-items: center;
+    cursor: grab; /* Mãozinha aberta */
+    user-select: none; /* Impede selecionar o texto ao arrastar */
+}
+
+.win-header:active {
+    cursor: grabbing; /* Mãozinha fechada ao clicar */
+}
+
+/* Cor diferente pro header do inventário (opcional, já existia) */
+#inventory-window .win-header { background: #006666; }
+
+/* BOTÃO FECHAR (X) */
+.close-btn {
+    cursor: pointer;
+    font-size: 16px;
+    color: #ccc;
+    transition: 0.2s;
+    line-height: 1;
+    padding: 0 5px;
+}
+.close-btn:hover {
+    color: #fff;
+    text-shadow: 0 0 5px #ff0000;
+}
