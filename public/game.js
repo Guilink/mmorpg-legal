@@ -68,6 +68,90 @@ let myStats = { hp: 100, maxHp: 100, mp: 50, maxMp: 50 };
 let myLevel = 1, myXp = 0, myNextXp = 100, myPoints = 0;
 let myAttributes = { str: 5, agi: 5, int: 5, vit: 5 };
 
+// --- SISTEMA DE FADE (VISUAL) ---
+const fadingMeshes = []; // Lista de objetos sendo animados (fade in ou out)
+
+const FadeManager = {
+    // Faz aparecer suavemente
+    fadeIn: (mesh) => {
+        if (!mesh) return;
+        // Prepara materiais
+        mesh.traverse(c => {
+            if (c.isMesh && c.material) {
+                c.material.transparent = true;
+                c.material.opacity = 0; // Começa invisível
+                // depthWrite ajuda a não bugar a ordem de renderização
+                c.material.depthWrite = true; 
+            }
+        });
+        mesh.userData.fadeTarget = 1.0;
+        mesh.userData.fadeSpeed = 2.0; // Velocidade (quanto maior, mais rápido)
+        fadingMeshes.push(mesh);
+    },
+
+    // Faz sumir e depois remove da cena
+    fadeOutAndRemove: (mesh) => {
+        if (!mesh) return;
+        // Garante que materiais aceitem opacidade
+        mesh.traverse(c => {
+            if (c.isMesh && c.material) {
+                c.material.transparent = true;
+                c.material.depthWrite = true;
+            }
+        });
+        mesh.userData.fadeTarget = 0.0;
+        mesh.userData.fadeSpeed = 2.0;
+        mesh.userData.removeOnComplete = true; // Marca para deletar no final
+        
+        // Se já estiver na lista (ex: estava dando fade-in e morreu), atualiza. 
+        // Se não, adiciona.
+        if (!fadingMeshes.includes(mesh)) fadingMeshes.push(mesh);
+    },
+
+    // Roda a cada frame
+    update: (delta) => {
+        for (let i = fadingMeshes.length - 1; i >= 0; i--) {
+            const mesh = fadingMeshes[i];
+            let complete = false;
+
+            mesh.traverse(c => {
+                if (c.isMesh && c.material) {
+                    const current = c.material.opacity;
+                    const target = mesh.userData.fadeTarget;
+                    
+                    // Aproxima a opacidade do alvo (Lerp simples)
+                    const diff = target - current;
+                    
+                    if (Math.abs(diff) < 0.05) {
+                        c.material.opacity = target;
+                        complete = true;
+                    } else {
+                        // Move em direção ao alvo
+                        c.material.opacity += Math.sign(diff) * mesh.userData.fadeSpeed * delta;
+                        c.material.opacity = Math.max(0, Math.min(1, c.material.opacity)); // Clamp 0-1
+                    }
+                }
+            });
+
+            if (complete) {
+                // Remove da lista de animação
+                fadingMeshes.splice(i, 1);
+
+                if (mesh.userData.removeOnComplete) {
+                    // FADE OUT COMPLETO: Remove da cena 3D
+                    scene.remove(mesh);
+                } else {
+                    // FADE IN COMPLETO: Otimização
+                    // Desliga transparência para ganhar performance e evitar bugs de z-buffer
+                    mesh.traverse(c => {
+                        if (c.isMesh && c.material) c.material.transparent = false;
+                    });
+                }
+            }
+        }
+    }
+};
+
 // --- EXPOR FUNÇÕES PARA O HTML (WINDOW) ---
 // Como é um módulo, o escopo é local. Precisamos pendurar no window o que o HTML chama via onclick.
 
@@ -161,7 +245,7 @@ socket.on('update_stats', (data) => {
 });
 
 socket.on('player_joined', (data) => { if(data.id !== socket.id) addOtherPlayer(data); });
-socket.on('player_left', (id) => { if(otherPlayers[id]) { scene.remove(otherPlayers[id]); delete otherPlayers[id]; } });
+socket.on('player_left', (id) => { if(otherPlayers[id]) { FadeManager.fadeOutAndRemove(otherPlayers[id]); delete otherPlayers[id]; } });
 
 socket.on('player_moved', d => {
     if(d.id === socket.id) return;
@@ -273,7 +357,7 @@ socket.on('monster_dead', (id) => {
         currentTargetId = null; // Limpa o alvo
         if(targetRing) targetRing.visible = false;
     }
-    if(monsters[id]) { scene.remove(monsters[id]); delete monsters[id]; } 
+    if(monsters[id]) { FadeManager.fadeOutAndRemove(monsters[id]); delete monsters[id]; } 
 });
 
 socket.on('chat_message', (data) => {
@@ -699,12 +783,12 @@ function addOtherPlayer(data) {
     // Não adiciona a si mesmo
     if(data.id === socket.id) return; 
 
-    // Se o nome vier undefined (caso raro agora), usa um placeholder
+    // Se o nome vier undefined, usa um placeholder
     const nameToShow = data.username || "Desconhecido";
 
     const loader = new THREE.GLTFLoader();
     loader.load('assets/heroi1.glb', gltf => {
-        // Verifica de novo se o player não foi adicionado enquanto carregava
+        // Verifica de novo se o player não foi adicionado enquanto carregava (segurança async)
         if(otherPlayers[data.id]) {
              scene.remove(otherPlayers[data.id]);
         }
@@ -721,7 +805,24 @@ function addOtherPlayer(data) {
         mesh.userData.currentAnimation = '';
 
         mesh.scale.set(0.6, 0.6, 0.6);
-        mesh.traverse(c => { if(c.isMesh) { c.castShadow=true; c.receiveShadow=true; } });  
+
+        // --- CORREÇÃO DO BUG DE FADE & SOMBRAS ---
+        mesh.traverse(c => { 
+            if(c.isMesh) { 
+                c.castShadow = true; 
+                c.receiveShadow = true;
+                
+                // IMPORTANTE: Clonamos o material para que o FadeManager
+                // afete apenas ESTE jogador, e não todos que usam o mesmo modelo.
+                if (c.material) {
+                    c.material = c.material.clone();
+                    // Garante que comece opaco e com escrita no buffer de profundidade correta
+                    c.material.transparent = false;
+                    c.material.depthWrite = true;
+                }
+            } 
+        });  
+        // -----------------------------------------
         
         setupAnimations(mesh, gltf.animations);
         
@@ -736,44 +837,74 @@ function addOtherPlayer(data) {
         scene.add(mesh);
         otherPlayers[data.id] = mesh;
         
+        // Efeito visual de entrada suave
+        FadeManager.fadeIn(mesh);
+        
         playAnim(mesh, 'IDLE');
     });
 }
 
 function addMonster(data) {
+    // Verifica se já existe
     if(monsters[data.id]) return;
 
-    // 1. Pega a config centralizada
+    // 1. Pega a config centralizada (que veio do servidor no login)
     const typeConfig = globalMonsterTypes[data.type];
+    
+    // Se não tiver config para esse tipo, aborta
     if (!typeConfig) return;
 
-    // 2. Define o Modelo
+    // 2. Define qual Modelo usar
     const modelName = typeConfig.model; 
     const tpl = monsterTemplates[modelName];
 
+    // Se o modelo ainda não carregou, aborta
     if(!tpl) return; 
 
+    // Clona a cena do modelo
     const mesh = tpl.scene.clone();
     
+    // Configura dados internos
     mesh.userData.id = data.id; 
     mesh.userData.name = typeConfig.name;
 
-    // --- AQUI ESTÁ A MÁGICA DO SCALE ---
-    // Pega o scale do config. Se não tiver, usa 0.5 como padrão.
+    // Aplica o SCALE (Tamanho) definido no GameConfig
     const s = typeConfig.scale || 0.5; 
     mesh.scale.set(s, s, s);
-    // -----------------------------------
 
-    mesh.traverse(c => { if(c.isMesh) { c.castShadow=true; c.receiveShadow=true; } });  
+    // --- CORREÇÃO DO FADE INDIVIDUAL ---
+    mesh.traverse(c => { 
+        if(c.isMesh) { 
+            c.castShadow = true; 
+            c.receiveShadow = true;
+            
+            // Clonamos o material para que o Fade afete SÓ este monstro
+            if (c.material) {
+                c.material = c.material.clone();
+                c.material.transparent = false; 
+                c.material.depthWrite = true;
+            }
+        } 
+    });  
+    // -----------------------------------
     
+    // Configura animações
     setupAnimations(mesh, tpl.animations);
+    
+    // Posiciona
     mesh.position.set(data.position.x, data.position.y, data.position.z);
     mesh.rotation.y = data.rotation;
     
+    // Adiciona à cena e à lista lógica
     scene.add(mesh);
     monsters[data.id] = mesh;
+    
+    // Configura interpolação
     mesh.userData.targetPos = mesh.position.clone();
     mesh.userData.targetRot = data.rotation;
+
+    // Efeito de entrada suave
+    FadeManager.fadeIn(mesh);
 }
 
 // --- VISUAL FX ---
@@ -1047,6 +1178,7 @@ function animate() {
     }
 
     const delta = clock.getDelta();
+    FadeManager.update(delta);
 
     // ==================================================================
     // 1. JOGADOR LOCAL
