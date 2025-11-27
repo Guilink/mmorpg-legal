@@ -44,6 +44,8 @@ let currentTargetId = null; // Quem é o meu alvo atual (objeto do monstro ou pl
 let frameCount = 0;
 let lastFpsTime = 0; 
 
+const pendingLoads = new Set();
+
 // Vetores reutilizáveis
 const tempVector = new THREE.Vector3();
 const tempOrigin = new THREE.Vector3();
@@ -173,10 +175,13 @@ socket.on('update_stats', (data) => {
 socket.on('player_joined', (data) => { if(data.id !== socket.id) addOtherPlayer(data); });
 
 socket.on('player_left', (id) => { 
+    // SE ESTIVER CARREGANDO, CANCELA A TRAVA
+    if (pendingLoads.has(id)) {
+        pendingLoads.delete(id);
+    }
+
     if(otherPlayers[id]) { 
-        // --- CORREÇÃO AQUI: Passar 'scene' como 2º argumento ---
         FadeManager.fadeOutAndRemove(otherPlayers[id], scene); 
-        
         delete otherPlayers[id]; 
     } 
 });
@@ -221,6 +226,15 @@ socket.on('monsters_update', (pack) => {
     // 1. Atualiza ou Cria Monstros baseados no pacote do servidor
     pack.forEach(d => {
         serverIds.add(d.id);
+
+        // Se o servidor diz que o HP é 0 ou menor, mas o monstro ainda existe aqui, mata ele.
+        // Isso corrige o sprite congelado se o pacote de morte falhar.
+        if (d.hp <= 0 && monsters[d.id]) {
+            FadeManager.fadeOutAndRemove(monsters[d.id], scene);
+            delete monsters[d.id];
+            if(currentTargetId === d.id) { currentTargetId = null; if(targetRing) targetRing.visible = false; }
+            return; // Para de processar esse monstro
+        }        
 
         if(monsters[d.id]) {
             const mob = monsters[d.id];
@@ -453,7 +467,15 @@ function initEngine() {
             const anim = isSitting ? 'SIT' : 'IDLE';
             playAnim(myPlayer, anim);
             socket.emit('player_update', { position: myPlayer.position, rotation: myPlayer.rotation.y, animation: anim });
-        }
+        },
+        () => { 
+            // LÓGICA DO CLIQUE (Primeiro golpe)
+            const now = Date.now();
+            if (!getIsChatActive() && !isAttacking && (now - lastAttackTime > ATTACK_COOLDOWN)) {
+                performAttack(); 
+                lastAttackTime = now;
+            }
+        }       
     );
 
     window.addEventListener('resize', () => { 
@@ -667,62 +689,57 @@ function setupAnimations(mesh, clips) {
 function playAnim(mesh, name) { if(mesh && mesh.userData.play) mesh.userData.play(name); }
 
 function addOtherPlayer(data) {
-    // 1. Prevenção de Duplicidade: Se já existe, remove o antigo primeiro
-    if (otherPlayers[data.id]) {
-        scene.remove(otherPlayers[data.id]);
-        delete otherPlayers[data.id];
-    }
+    // 1. Se já existe ou JÁ ESTÁ CARREGANDO, ignora. (A CORREÇÃO É ESTA LINHA)
+    if (otherPlayers[data.id] || pendingLoads.has(data.id)) return;
     
+    // Marca que estamos carregando este ID
+    pendingLoads.add(data.id);
+
     // Não adiciona a si mesmo
-    if(data.id === socket.id) return; 
+    if(data.id === socket.id) {
+        pendingLoads.delete(data.id);
+        return; 
+    }
 
-    // Se o nome vier undefined, usa um placeholder
     const nameToShow = data.username || "Desconhecido";
-
     const loader = new THREE.GLTFLoader();
+
     loader.load('assets/heroi1.glb', gltf => {
-        // Verifica de novo se o player não foi adicionado enquanto carregava (segurança async)
-        if(otherPlayers[data.id]) {
-             scene.remove(otherPlayers[data.id]);
-        }
+        // Verifica se o player saiu do mapa enquanto carregava
+        // (Ex: carregou o modelo, mas o cara desconectou nesse meio tempo)
+        if(!pendingLoads.has(data.id)) return; 
+
+        // Remove duplicatas por segurança
+        if(otherPlayers[data.id]) scene.remove(otherPlayers[data.id]);
 
         const mesh = gltf.scene;
         mesh.userData.id = data.id; 
 
-        // Configuração de Interpolação
         mesh.userData.targetPos = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
         mesh.userData.targetQuat = new THREE.Quaternion();
         mesh.userData.targetQuat.setFromEuler(new THREE.Euler(0, data.rotation, 0));
         
         mesh.userData.serverAnimation = data.animation || 'IDLE';
         mesh.userData.currentAnimation = '';
-
         mesh.scale.set(0.6, 0.6, 0.6);
 
-        // --- CORREÇÃO DO BUG DE FADE & SOMBRAS ---
         mesh.traverse(c => { 
             if(c.isMesh) { 
                 c.castShadow = true; 
                 c.receiveShadow = true;
-                
-                // IMPORTANTE: Clonamos o material para que o FadeManager
-                // afete apenas ESTE jogador, e não todos que usam o mesmo modelo.
                 if (c.material) {
                     c.material = c.material.clone();
-                    // Garante que comece opaco e com escrita no buffer de profundidade correta
                     c.material.transparent = false;
                     c.material.depthWrite = true;
                 }
             } 
         });  
-        // -----------------------------------------
         
         setupAnimations(mesh, gltf.animations);
         
         mesh.position.set(data.position.x, data.position.y, data.position.z);
         mesh.rotation.y = data.rotation;
         
-        // Criação do Nome
         const sprite = createTextSprite(nameToShow, 'white');
         sprite.position.y = 3.0;
         mesh.add(sprite);
@@ -730,10 +747,16 @@ function addOtherPlayer(data) {
         scene.add(mesh);
         otherPlayers[data.id] = mesh;
         
-        // Efeito visual de entrada suave
         FadeManager.fadeIn(mesh);
-        
         playAnim(mesh, 'IDLE');
+
+        // FINALIZOU: Remove da lista de pendentes
+        pendingLoads.delete(data.id);
+
+    }, undefined, (error) => {
+        // Se der erro no download, libera a trava para tentar de novo no próximo pacote
+        console.error("Erro ao carregar player:", error);
+        pendingLoads.delete(data.id);
     });
 }
 
@@ -934,11 +957,13 @@ function animate() {
             }
         }
 
-        // --- INPUT E RE-ATAQUE ---
-        // Checa cooldown visual e input
+        // Se a tecla F estiver apertada E o cooldown acabou
         if (!isChatActive && keys['f'] && !isAttacking && (now - lastAttackTime > ATTACK_COOLDOWN)) {
-            performAttack(); 
-            lastAttackTime = now;
+            // SÓ repete o ataque se já tiver um alvo selecionado (currentTargetId)
+            if (currentTargetId !== null) {
+                performAttack(); 
+                lastAttackTime = now;
+            }
         }
 
         // --- MOVIMENTAÇÃO ---
@@ -994,7 +1019,7 @@ function animate() {
         camera.lookAt(myPlayer.position.x, myPlayer.position.y + 1, myPlayer.position.z);
 
         // --- REDE (Heartbeat) ---
-        if(now - lastPacketTime > 50) {
+        if(now - lastPacketTime > 100) {
             let animToSend = 'IDLE';
             if (isAttacking) animToSend = 'ATTACK';
             else if (isSitting) animToSend = 'SIT';
