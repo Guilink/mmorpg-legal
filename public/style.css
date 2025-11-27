@@ -196,7 +196,7 @@ body { overflow: hidden; background: #000; }
     position: absolute;
     font-family: 'Segoe UI', Arial, sans-serif;
     font-weight: bold;
-    font-size: 30px;
+    font-size: 36px;
     text-shadow: 2px 2px 0px #000; /* Borda preta para leitura */
     user-select: none;
     will-change: transform, opacity; /* Otimização para o navegador */
@@ -210,7 +210,7 @@ body { overflow: hidden; background: #000; }
         transform: translate(-50%, 0) scale(1);
     }
     50% {
-        transform: translate(-50%, -30px) scale(1.2); /* Sobe e cresce um pouco */
+        transform: translate(-50%, -30px) scale(1.5); /* Sobe e cresce um pouco */
     }
     100% {
         opacity: 0;

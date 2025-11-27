@@ -50,6 +50,7 @@ bgmAudio.volume = 0.3;
 let isMapLoading = false;
 let isPlayerLoading = false;
 let isAttacking = false; 
+let attackTimer = 0; // Controla o tempo restante da animação de ataque
 let isSitting = false;   
 let lastAttackTime = 0;
 const ATTACK_COOLDOWN = 800; //ms
@@ -840,30 +841,39 @@ function createTargetIndicator() {
 function findBestTarget() {
     if (!myPlayer) return null;
     
-    const ATTACK_RANGE = 2.0; // Distância visual para selecionar (pode ser um pouco maior que a do server)
+    const RANGE_SQ = 4.0; // 2 metros ao quadrado
     let best = null;
-    let minDist = Infinity;
+    let minDistSq = Infinity;
 
-    // 1. Procura monstros
-    Object.values(monsters).forEach(m => {
-        const dist = m.position.distanceTo(myPlayer.position);
-        if (dist <= ATTACK_RANGE && dist < minDist) {
+    // OTIMIZAÇÃO: Loop 'for-in' evita criar Arrays novos a cada clique (Garbage Collection Friendly)
+    
+    // 1. Monstros
+    for (const id in monsters) {
+        const m = monsters[id];
+        // Distância manual (mais rápido que Vector3.distanceTo)
+        const dx = m.position.x - myPlayer.position.x;
+        const dz = m.position.z - myPlayer.position.z;
+        const distSq = (dx * dx) + (dz * dz);
+
+        if (distSq <= RANGE_SQ && distSq < minDistSq) {
             best = m;
-            minDist = dist;
+            minDistSq = distSq;
         }
-    });
+    }
 
-    // 2. Procura players (apenas se for mapa PVP)
-    // Dica: Para simplificar aqui no cliente, vamos permitir mirar em players sempre,
-    // mas o dano só vai contar se o servidor deixar.
+    // 2. Players (se não achou monstro)
     if (!best) {
-        Object.values(otherPlayers).forEach(p => {
-            const dist = p.position.distanceTo(myPlayer.position);
-            if (dist <= ATTACK_RANGE && dist < minDist) {
+        for (const id in otherPlayers) {
+            const p = otherPlayers[id];
+            const dx = p.position.x - myPlayer.position.x;
+            const dz = p.position.z - myPlayer.position.z;
+            const distSq = (dx * dx) + (dz * dz);
+
+            if (distSq <= RANGE_SQ && distSq < minDistSq) {
                 best = p;
-                minDist = dist;
+                minDistSq = distSq;
             }
-        });
+        }
     }
     
     return best;
@@ -872,58 +882,42 @@ function findBestTarget() {
 function performAttack() {
     if(getIsChatActive() || isSitting || !myPlayer) return;
     
-    // 1. Tenta achar um alvo NOVO ou manter o atual
+    // 1. Busca alvo (agora otimizada)
     const foundTargetMesh = findBestTarget();
-    if (foundTargetMesh) {
-        currentTargetId = foundTargetMesh.userData.id;
-    }
+    if (foundTargetMesh) currentTargetId = foundTargetMesh.userData.id;
 
-    // 2. Lógica de Rotação (Auto-aim)
     const targetObj = monsters[currentTargetId] || otherPlayers[currentTargetId];
     if (targetObj) {
         const dist = myPlayer.position.distanceTo(targetObj.position);
-        const MAX_AUTO_TURN_DIST = 3.0; // Aumentei um pouco para facilitar
-
-        if (dist <= MAX_AUTO_TURN_DIST) {
+        if (dist <= 3.0) {
             const dx = targetObj.position.x - myPlayer.position.x;
             const dz = targetObj.position.z - myPlayer.position.z;
             myPlayer.rotation.y = Math.atan2(dx, dz);
         }
-        
-        // Atualiza anel visual
         if(targetRing) {
              targetRing.visible = true;
              targetRing.position.set(targetObj.position.x, 0.05, targetObj.position.z);
         }
     }
 
-    // 3. Executa Animação e Rede
+    // 2. Configura Estado
     isAttacking = true;
+    attackTimer = ATTACK_COOLDOWN / 1000; // Converte ms para segundos (Ex: 0.8)
+    
     playAnim(myPlayer, 'ATTACK');
     
-    // Envia estado de ataque IMEDIATAMENTE
-    socket.emit('player_update', { 
-        position: myPlayer.position, 
-        rotation: myPlayer.rotation.y, 
-        animation: 'ATTACK' 
-    });
-    
+    // 3. Rede (A lógica de envio contínuo ficará no animate agora)
     socket.emit('attack_request');
-    
-    // Reseta estado após o fim da animação
-    setTimeout(() => { 
-        isAttacking = false; 
-        if(!isSitting) playAnim(myPlayer, 'IDLE'); 
-    }, ATTACK_COOLDOWN);
 }
 
 function animate() {
     requestAnimationFrame(animate);
     
-    // 1. Declaração única de 'now'
     const now = Date.now(); 
-    
     frameCount++;
+    
+    // OTIMIZAÇÃO DOM: Atualiza o contador de FPS apenas a cada 1 segundo (não a cada frame)
+    // Isso libera a Thread principal para processar o jogo.
     if (now - lastFpsTime >= 1000) {
         if(UI.dbgFps) {
             UI.dbgFps.textContent = frameCount;
@@ -932,27 +926,52 @@ function animate() {
         }
         frameCount = 0; lastFpsTime = now;
     }
+
     const delta = clock.getDelta();
 
-    // --- LÓGICA DO MEU JOGADOR ---
+    // ==================================================================
+    // 1. JOGADOR LOCAL
+    // ==================================================================
     if(myPlayer && !isMapLoading) {
         if(myPlayer.userData.mixer) myPlayer.userData.mixer.update(delta);
         
-        updateDebug(currentMapConfig ? currentMapConfig.id : '', myPlayer.position, Object.keys(otherPlayers).length + 1);
-        
+        // OTIMIZAÇÃO DOM: Atualiza as coordenadas de debug apenas a cada 10 frames
+        // Evita "Layout Thrashing" (o navegador recalculando estilo loucamente)
+        if (frameCount % 10 === 0) {
+            updateDebug(currentMapConfig ? currentMapConfig.id : '', myPlayer.position, Object.keys(otherPlayers).length + 1);
+        }
+
         const isChatActive = getIsChatActive();
 
-        // >>> NOVA LÓGICA DE ATAQUE AQUI <<<
-        // Se apertar F, não estiver atacando agora, e passou o tempo do cooldown
+        // --- GERENCIAMENTO DE ESTADO (Ataque Contínuo Fluido) ---
+        if (isAttacking) {
+            attackTimer -= delta; 
+            
+            if (attackTimer <= 0) {
+                isAttacking = false;
+
+                // TRUQUE DE FLUIDEZ:
+                // Se o tempo acabou mas a tecla F continua apertada, NÃO voltamos para IDLE.
+                // Deixamos cair direto no bloco abaixo para reiniciar o ataque imediatamente.
+                // Isso evita o custo de processamento de trocar Animação A -> B -> A em 1 frame.
+                if ((!keys['f'] || isChatActive) && !isSitting) {
+                    playAnim(myPlayer, 'IDLE');
+                }
+            }
+        }
+
+        // --- INPUT E RE-ATAQUE ---
+        // Checa cooldown visual e input
         if (!isChatActive && keys['f'] && !isAttacking && (now - lastAttackTime > ATTACK_COOLDOWN)) {
-            performAttack();
+            performAttack(); 
             lastAttackTime = now;
         }
 
-        if(!isChatActive && !isSitting && !isAttacking) { 
-            let move = false;
-            tempVector.set(0, 0, 0);
+        // --- MOVIMENTAÇÃO ---
+        let isMoving = false;
 
+        if(!isChatActive && !isSitting && !isAttacking) { 
+            tempVector.set(0, 0, 0);
             if(keys['w']) tempVector.z -= 1; if(keys['s']) tempVector.z += 1;
             if(keys['a']) tempVector.x -= 1; if(keys['d']) tempVector.x += 1;
 
@@ -966,17 +985,21 @@ function animate() {
                 if(!checkCollision(myPlayer.position, worldDir, 0.8)) {
                     const nextX = myPlayer.position.x + tempVector.x * moveDistance;
                     const nextZ = myPlayer.position.z + tempVector.z * moveDistance;
-                    const halfMap = currentMapConfig.mapSize / 2;
-                    const maxLimit = halfMap - CONFIG.mapPadding; 
-                    const minLimit = -(halfMap - CONFIG.mapPadding) - 1.0; 
+                    
+                    if (currentMapConfig) {
+                        const halfMap = currentMapConfig.mapSize / 2;
+                        const maxLimit = halfMap - CONFIG.mapPadding; 
+                        const minLimit = -(halfMap - CONFIG.mapPadding) - 1.0; 
 
-                    if (nextX > minLimit && nextX < maxLimit && nextZ > minLimit && nextZ < maxLimit) {
-                        myPlayer.position.x = nextX;
-                        myPlayer.position.z = nextZ;
-                        move = true;
+                        if (nextX > minLimit && nextX < maxLimit && nextZ > minLimit && nextZ < maxLimit) {
+                            myPlayer.position.x = nextX;
+                            myPlayer.position.z = nextZ;
+                            isMoving = true;
+                        }
                     }
                 }
 
+                // Rotação
                 const targetRot = Math.atan2(tempVector.x, tempVector.z);
                 let diff = targetRot - myPlayer.rotation.y;
                 while (diff > Math.PI) diff -= Math.PI * 2;
@@ -989,137 +1012,109 @@ function animate() {
                     playAnim(myPlayer, 'IDLE');
                 }
             }
-
-            if(move || now - lastPacketTime > 50) {
-                const currentAnim = myPlayer.userData.current || 'IDLE';
-                socket.emit('player_update', { 
-                    position: myPlayer.position, rotation: myPlayer.rotation.y, animation: currentAnim 
-                });
-                lastPacketTime = now;
-            }
         }
         
+        // Câmera
         tempOrigin.copy(myPlayer.position).add(new THREE.Vector3(0, 6, 7)); 
         camera.position.lerp(tempOrigin, 0.1);
         camera.lookAt(myPlayer.position.x, myPlayer.position.y + 1, myPlayer.position.z);
+
+        // --- REDE (Heartbeat) ---
+        if(now - lastPacketTime > 50) {
+            let animToSend = 'IDLE';
+            if (isAttacking) animToSend = 'ATTACK';
+            else if (isSitting) animToSend = 'SIT';
+            else if (isMoving) animToSend = keys['shift'] ? 'RUN' : 'WALK';
+
+            socket.emit('player_update', { 
+                position: myPlayer.position, 
+                rotation: myPlayer.rotation.y, 
+                animation: animToSend 
+            });
+            lastPacketTime = now;
+        }
     }
 
-    // --- LOOP DOS OUTROS JOGADORES (Interpolação Linear de Tempo) ---
-    const SERVER_UPDATE_RATE = 100; // O servidor envia a cada 100ms
-    const BUFFER_TIME = 20;         // Pequena margem para instabilidade da net (Total 120ms)
-    
-    // REMOVI A SEGUNDA DECLARAÇÃO DE 'now' AQUI QUE CAUSAVA O ERRO
+    // ==================================================================
+    // 2. PLAYERS REMOTOS (Loop Otimizado)
+    // ==================================================================
+    const LERP_SPEED = 6.0;
+    const ROT_SPEED = 10.0;
 
-// --- LOOP DOS OUTROS JOGADORES (Revisado) ---
-    const LERP_SPEED = 6.0; // Velocidade de suavização (Quanto maior, mais rápido "cola" na posição real, mas mais "duro" fica)
-    const ROT_SPEED = 10.0; // Rotação deve ser rápida para ele olhar logo para onde vai
+    // OTIMIZAÇÃO: Substituído Object.values().forEach por for-in
+    // Evita criar array de objetos a cada frame (reduz pressão no Garbage Collector)
+    for (const id in otherPlayers) {
+        const p = otherPlayers[id];
+        if (!p.userData.targetPos) continue;
 
-    Object.values(otherPlayers).forEach(p => {
-        if (!p.userData.targetPos) return;
-
-        // 1. INTERPOLAÇÃO DE POSIÇÃO (Suavização Exponencial)
-        // Movemos o boneco X% do caminho em direção ao alvo a cada frame
-        // delta * LERP_SPEED garante que seja independente de FPS
         const dist = p.position.distanceTo(p.userData.targetPos);
-        
-        if (dist > 0.05) { // Só move se estiver a mais de 5cm do alvo (evita tremedeira microscópica)
-            // O fator de lerp não deve passar de 1.0
+        if (dist > 0.05) {
             const lerpFactor = Math.min(delta * LERP_SPEED, 1.0);
             p.position.lerp(p.userData.targetPos, lerpFactor);
-        } else {
-            // Se estiver muito perto, cola na posição final para garantir precisão
-            //p.position.copy(p.userData.targetPos); // Opcional: pode comentar se quiser ultra-suavidade
         }
 
-        // 2. INTERPOLAÇÃO DE ROTAÇÃO (Slerp com Quaternion)
-        // Isso calcula o menor caminho de rotação (evita girar 350 graus quando só precisava de 10)
         p.quaternion.slerp(p.userData.targetQuat, Math.min(delta * ROT_SPEED, 1.0));
 
-        // 3. LÓGICA DE ANIMAÇÃO INTELIGENTE
-        // Calculamos a velocidade REAL que o boneco está se movendo na tela neste frame
-        // Não confiamos apenas no que o server diz, pois o server pode dizer "WALK" mas o boneco estar travado na parede no cliente.
-        
-        // A animação que o servidor MANDOU (Prioridade para Ações)
-        // 3. LÓGICA DE ANIMAÇÃO INTELIGENTE (Com Sincronia de Tempo)
+        // Animação Remota
         const serverAnim = p.userData.serverAnimation;
         let finalAnim = 'IDLE';
 
         if (serverAnim === 'ATTACK' || serverAnim === 'SIT' || serverAnim === 'DEAD') {
             finalAnim = serverAnim;
         } else {
-            // Se mover visualmente > 0.1, considera correndo/andando
-            if (dist > 0.1) {
-                finalAnim = (serverAnim === 'RUN') ? 'RUN' : 'WALK';
-            } else {
-                finalAnim = 'IDLE';
-            }
+            if (dist > 0.1) finalAnim = (serverAnim === 'RUN') ? 'RUN' : 'WALK';
         }
 
-        // --- CORREÇÃO DE SINCRONIA (Cooldown Visual) ---
-        
-        // Caso 1: O estado mudou (Ex: Estava IDLE e virou ATTACK)
         if (p.userData.currentAnimation !== finalAnim) {
             playAnim(p, finalAnim);
             p.userData.currentAnimation = finalAnim;
-
-            // Se acabou de começar a atacar, marca o tempo atual
-            if (finalAnim === 'ATTACK') {
-                p.userData.lastRemoteAttack = now;
-            }
-        } 
-        // Caso 2: O estado continua sendo ATTACK (Segurando F)
-        else if (finalAnim === 'ATTACK') {
-            // Calcula quanto tempo passou desde o último soco que VIMOS ele dar
+            if (finalAnim === 'ATTACK') p.userData.lastRemoteAttack = now;
+        } else if (finalAnim === 'ATTACK') {
             const timeSinceLast = now - (p.userData.lastRemoteAttack || 0);
-
-            // AQUI ESTÁ O SEGREDO:
-            // Só tocamos a animação de novo se já tiver passado o tempo do Cooldown (800ms).
-            // Assim, ignoramos se a animação 3D é curta ou rápida demais.
             if (timeSinceLast >= ATTACK_COOLDOWN) {
-                playAnim(p, 'ATTACK'); // Toca de novo (reseta a anim)
-                p.userData.lastRemoteAttack = now; // Reseta o cronômetro local para esse player
+                playAnim(p, 'ATTACK'); 
+                p.userData.lastRemoteAttack = now;
             }
         }
 
         if(p.userData.mixer) p.userData.mixer.update(delta);
-    });
+    }
 
-    // --- LOOP DOS MONSTROS ---
-    Object.values(monsters).forEach(m => {
+    // ==================================================================
+    // 3. MONSTROS (Loop Otimizado)
+    // ==================================================================
+    // OTIMIZAÇÃO: for-in loop para evitar alocação de memória
+    for (const id in monsters) {
+        const m = monsters[id];
+
         if(m.userData.targetPos) {
             const dist = m.position.distanceTo(m.userData.targetPos);
-            
-            if(dist > 5.0) {
-                m.position.copy(m.userData.targetPos);
-            } else {
-                // Usa o fator MONSTER (0.1)
-                m.position.lerp(m.userData.targetPos, CONFIG.lerpFactorMonster);
-            }
+            if(dist > 5.0) m.position.copy(m.userData.targetPos);
+            else m.position.lerp(m.userData.targetPos, CONFIG.lerpFactorMonster);
         }
         
         if(m.userData.targetRot !== undefined) {
             let diff = m.userData.targetRot - m.rotation.y;
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
-            
-            // Rotação suave para monstros
             m.rotation.y += diff * CONFIG.lerpFactorMonster;
         }
+
         if(m.userData.mixer) m.userData.mixer.update(delta);
-    });
+    }
 
-    // --- ATUALIZAÇÃO DO ANEL (Movi para ANTES do render para ficar sincronizado) ---
+    // ==================================================================
+    // 4. VISUAL FX
+    // ==================================================================
     const activeTarget = monsters[currentTargetId] || otherPlayers[currentTargetId];
-
-    if (targetRing && activeTarget) {
-        // Se o alvo existe na lista de monstros ou players
-        targetRing.visible = true;
-        targetRing.position.lerp(activeTarget.position, 0.2);
-        targetRing.position.y = 0.05;
-    } else {
-        if(targetRing) targetRing.visible = false;
-        // Opcional: Se o monstro sumiu da lista, limpamos o ID
-        if (!activeTarget) currentTargetId = null;
+    if (targetRing) {
+        if (activeTarget) {
+            targetRing.visible = true;
+            targetRing.position.lerp(activeTarget.position, 0.2);
+            targetRing.position.y = 0.05;
+        } else {
+            targetRing.visible = false;
+        }
     }
 
     renderer.render(scene, camera);
