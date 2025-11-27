@@ -34,6 +34,11 @@ const MAP_CONFIG = {
     }
 };
 
+const BEHAVIOR = {
+    NEUTRAL: 0,
+    AGGRESSIVE: 1
+};
+
 const MONSTER_TYPES = {
     'bolota': { 
         name: 'Bolota Cascavél',
@@ -44,7 +49,9 @@ const MONSTER_TYPES = {
         range: 1.0,
         attackSpeed: 1800,
         dmg: 8,
-        xp: 15
+        xp: 15,
+        behavior: BEHAVIOR.NEUTRAL, // Passivo
+        sightRange: 10.0        
     },
 
     'morcego': { 
@@ -56,7 +63,9 @@ const MONSTER_TYPES = {
         range: 1.0,
         attackSpeed: 1500,
         dmg: 14,
-        xp: 30
+        xp: 30,
+        behavior: BEHAVIOR.AGGRESSIVE, // Passivo
+        sightRange: 8.0          
     },
 
     'verdinho': { 
@@ -68,7 +77,9 @@ const MONSTER_TYPES = {
         range: 1.0,
         attackSpeed: 1200,
         dmg: 22,
-        xp: 50
+        xp: 50,
+        behavior: BEHAVIOR.NEUTRAL, // Passivo
+        sightRange: 10.0          
     },
 
     'cogumelo': {
@@ -80,7 +91,9 @@ const MONSTER_TYPES = {
         range: 1.0,
         attackSpeed: 2000,
         dmg: 35,
-        xp: 120
+        xp: 120,
+        behavior: BEHAVIOR.NEUTRAL, // Passivo
+        sightRange: 10.0          
     },
 
     'cogumelochefe': {
@@ -92,7 +105,9 @@ const MONSTER_TYPES = {
         range: 1.3,
         attackSpeed: 1800,
         dmg: 60,
-        xp: 300
+        xp: 300,
+        behavior: BEHAVIOR.AGGRESSIVE, // Passivo
+        sightRange: 10.0         
     }
 };
 
