@@ -23,10 +23,11 @@ class Monster {
     }
 
     // Recebemos 'onlinePlayers' e funções de callback para notificar o servidor
-    update(delta, onlinePlayers, callbacks) {
+update(delta, onlinePlayers, callbacks) {
         if (this.hp <= 0) return;
 
         const mapData = MAP_CONFIG[this.map];
+        // Otimização: hardcode ou cache do limite se possível, mas ok manter assim
         const limit = (mapData.mapSize / 2) - 1.5;
 
         // Cooldowns
@@ -37,43 +38,52 @@ class Monster {
                 this.isAttackingAnimation = false;
                 this.animation = 'IDLE';
             }
-            return;
+            return; // Se está atacando, não se move nem busca alvo
         }
-
-        let speed = this.config.speed;
-        if (this.state === 'CHASE') speed *= 1.8;
 
         // Lógica de IA
         if (this.targetId && onlinePlayers[this.targetId] && onlinePlayers[this.targetId].map === this.map) {
             const target = onlinePlayers[this.targetId];
             const dx = target.position.x - this.position.x;
             const dz = target.position.z - this.position.z;
-            const dist = Math.sqrt(dx*dx + dz*dz);
+            
+            // OTIMIZAÇÃO: Distância ao Quadrado (Evita Math.sqrt)
+            const distSq = (dx * dx) + (dz * dz);
+            const rangeSq = this.config.range * this.config.range;
+
+            // Atualiza rotação apenas se o alvo se moveu significativamente
             this.rotation = Math.atan2(dx, dz);
 
-            if (dist <= this.config.range) {
+            if (distSq <= rangeSq) {
                 if (this.attackCooldown <= 0) {
-                    // Chama a função de ataque definida no server.js
                     if(callbacks.onAttack) callbacks.onAttack(this, target);
                 }
             } else {
                 this.state = 'CHASE';
                 this.animation = 'WALK';
-                this.tryMove(speed, this.rotation, limit);
+                // Aumenta a velocidade se estiver perseguindo
+                const chaseSpeed = this.config.speed * 1.8;
+                this.tryMove(chaseSpeed, this.rotation, limit);
             }
         } else {
+            // Modo Passivo / Patrulha
             this.targetId = null;
             this.actionTimer -= delta;
             
             if (this.actionTimer <= 0) {
+                // Alterna entre IDLE e WALK aleatoriamente
                 this.state = this.state === 'IDLE' ? 'WALK' : 'IDLE';
                 this.animation = this.state;
+                // Tempo aleatório para a próxima ação
                 this.actionTimer = 2000 + Math.random() * 3000;
-                if(this.state === 'WALK') this.rotation = Math.random() * 6.28;
+                
+                if(this.state === 'WALK') {
+                    this.rotation = Math.random() * 6.28;
+                }
             }
             
             if (this.state === 'WALK') {
-                this.tryMove(speed, this.rotation, limit);
+                this.tryMove(this.config.speed, this.rotation, limit);
             }
         }
     }

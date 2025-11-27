@@ -2,30 +2,30 @@
   "222": {
     "password": "222",
     "data": {
-      "map": "floresta",
+      "map": "vilarejo",
       "position": {
-        "x": 0,
+        "x": 2.3186012972298857,
         "y": 0,
-        "z": 0
+        "z": 5.7686998154825275
       },
       "stats": {
-        "hp": 85,
+        "hp": 28.5,
         "mp": 100,
-        "cash": 750,
+        "cash": 800,
         "maxHp": 150,
         "maxMp": 100,
-        "atk": 20,
+        "atk": 38,
         "matk": 10,
         "def": 5,
         "eva": 12,
         "attackSpeed": 1540,
         "speed": 0.196
       },
-      "level": 9,
-      "xp": 288,
-      "points": 6,
+      "level": 10,
+      "xp": 64,
+      "points": 0,
       "attributes": {
-        "str": 5,
+        "str": 14,
         "agi": 23,
         "int": 5,
         "vit": 5
@@ -37,14 +37,14 @@
     "data": {
       "map": "vilarejo",
       "position": {
-        "x": -0.06311262404917381,
+        "x": 4.1939556954481185,
         "y": 0,
-        "z": 8.217592600974932
+        "z": 4.240455695433219
       },
       "stats": {
-        "hp": 28,
+        "hp": 150,
         "mp": 100,
-        "cash": 270,
+        "cash": 280,
         "maxHp": 150,
         "maxMp": 100,
         "atk": 20,
@@ -54,7 +54,7 @@
         "attackSpeed": 1900
       },
       "level": 5,
-      "xp": 154,
+      "xp": 189,
       "points": 12,
       "attributes": {
         "str": 5,
@@ -67,33 +67,33 @@
   "qqq": {
     "password": "qqq",
     "data": {
-      "map": "floresta",
+      "map": "vilarejo",
       "position": {
-        "x": -0.6247719938132946,
+        "x": 0.4381507793779271,
         "y": 0,
-        "z": 7.772252504086681
+        "z": 6.420190528178477
       },
       "stats": {
-        "hp": 253.5,
+        "hp": 95,
         "mp": 100,
-        "cash": 2410,
-        "maxHp": 270,
+        "cash": 3400,
+        "maxHp": 320,
         "maxMp": 100,
-        "atk": 46,
+        "atk": 60,
         "matk": 10,
-        "def": 17,
-        "eva": 6,
+        "def": 22,
+        "eva": 7,
         "attackSpeed": 1800,
         "speed": 0.16999999999999998
       },
-      "level": 15,
-      "xp": 407,
-      "points": 12,
+      "level": 17,
+      "xp": 1454,
+      "points": 6,
       "attributes": {
-        "str": 18,
+        "str": 25,
         "agi": 10,
         "int": 5,
-        "vit": 17
+        "vit": 22
       }
     }
   },
@@ -329,16 +329,16 @@
   "fff": {
     "password": "fff",
     "data": {
-      "map": "vilarejo",
+      "map": "floresta",
       "position": {
-        "x": 0.004882398173345043,
+        "x": -0.02085827586494951,
         "y": 0,
-        "z": 0.27091906624063694
+        "z": 7.508204528886347
       },
       "stats": {
-        "hp": 100,
-        "mp": 50,
-        "cash": 0,
+        "hp": 54,
+        "mp": 100,
+        "cash": 80,
         "maxHp": 150,
         "maxMp": 100,
         "atk": 20,
@@ -347,9 +347,9 @@
         "eva": 3,
         "attackSpeed": 1900
       },
-      "level": 1,
-      "xp": 0,
-      "points": 0,
+      "level": 2,
+      "xp": 90,
+      "points": 3,
       "attributes": {
         "str": 5,
         "agi": 5,
@@ -381,6 +381,70 @@
       },
       "level": 1,
       "xp": 0,
+      "points": 0,
+      "attributes": {
+        "str": 5,
+        "agi": 5,
+        "int": 5,
+        "vit": 5
+      }
+    }
+  },
+  "zzz": {
+    "password": "zzz",
+    "data": {
+      "map": "vilarejo",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "stats": {
+        "hp": 150,
+        "mp": 100,
+        "cash": 10,
+        "maxHp": 150,
+        "maxMp": 100,
+        "atk": 20,
+        "matk": 10,
+        "def": 5,
+        "eva": 3,
+        "attackSpeed": 1900
+      },
+      "level": 1,
+      "xp": 35,
+      "points": 0,
+      "attributes": {
+        "str": 5,
+        "agi": 5,
+        "int": 5,
+        "vit": 5
+      }
+    }
+  },
+  "ccc": {
+    "password": "ccc",
+    "data": {
+      "map": "vilarejo",
+      "position": {
+        "x": -1.407860262801456,
+        "y": 0,
+        "z": 2.0213602627791043
+      },
+      "stats": {
+        "hp": 100,
+        "mp": 50,
+        "cash": 10,
+        "maxHp": 150,
+        "maxMp": 100,
+        "atk": 20,
+        "matk": 10,
+        "def": 5,
+        "eva": 3,
+        "attackSpeed": 1900
+      },
+      "level": 1,
+      "xp": 50,
       "points": 0,
       "attributes": {
         "str": 5,

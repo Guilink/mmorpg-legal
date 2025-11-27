@@ -51,6 +51,8 @@ let isMapLoading = false;
 let isPlayerLoading = false;
 let isAttacking = false; 
 let isSitting = false;   
+let lastAttackTime = 0;
+const ATTACK_COOLDOWN = 800; //ms
 let currentMapConfig = null;
 let lastPacketTime = 0;
 
@@ -186,16 +188,74 @@ socket.on('player_moved', d => {
 
 socket.on('monsters_update', (pack) => {
     if(isMapLoading) return;
-    const serverIds = new Set(pack.map(d => d.id));
-    Object.keys(monsters).forEach(localId => {
-        if(!serverIds.has(localId)) { scene.remove(monsters[localId]); delete monsters[localId]; }
-    });
+
+    const now = Date.now();
+    const serverIds = new Set();
+
+    // 1. Atualiza ou Cria Monstros baseados no pacote do servidor
     pack.forEach(d => {
+        serverIds.add(d.id);
+
         if(monsters[d.id]) {
-            monsters[d.id].userData.targetPos = new THREE.Vector3(d.position.x, d.position.y, d.position.z);
-            monsters[d.id].userData.targetRot = d.rotation;
-            if(monsters[d.id].userData.current !== d.animation) playAnim(monsters[d.id], d.animation);
-        } else { addMonster(d); }
+            const mob = monsters[d.id];
+            
+            // OTIMIZAÇÃO: Usamos .set() para reutilizar o Vetor existente
+            // em vez de criar um new THREE.Vector3() a cada frame (reduz lixo de memória)
+            if(mob.userData.targetPos) {
+                mob.userData.targetPos.set(d.position.x, d.position.y, d.position.z);
+            }
+            
+            mob.userData.targetRot = d.rotation;
+            
+            // Atualiza Animação apenas se mudou
+            if(mob.userData.current !== d.animation) {
+                playAnim(mob, d.animation);
+            }
+
+            // Atualiza HP (útil para lógica interna ou barras de vida futuras)
+            mob.userData.hp = d.hp;
+
+            // CRÍTICO: Marca o momento exato (timestamp) que este monstro foi visto
+            mob.userData.lastSeen = now;
+
+        } else { 
+            // Se o monstro não existe no cliente, cria ele
+            addMonster(d);
+            
+            // Marca como visto imediatamente após criar para não ser deletado no passo 2
+            if(monsters[d.id]) {
+                monsters[d.id].userData.lastSeen = now;
+            }
+        }
+    });
+
+    // 2. Limpeza Suave ("Soft Garbage Collection")
+    // Em vez de deletar imediatamente quem não veio no pacote (o que causa piscadas),
+    // nós damos uma tolerância de tempo.
+    const TOLERANCE = 2000; // 2 segundos
+
+    Object.keys(monsters).forEach(localId => {
+        const m = monsters[localId];
+        
+        // Se o ID local NÃO estava no pacote atual do servidor...
+        if(!serverIds.has(localId)) {
+            
+            // Verificamos há quanto tempo ele não é atualizado.
+            // Se faz mais de 2 segundos que não ouvimos falar dele, removemos.
+            // (Significa que ele saiu da área de visão ou o servidor parou de enviar)
+            if (m.userData.lastSeen && (now - m.userData.lastSeen > TOLERANCE)) {
+                scene.remove(m); 
+                delete monsters[localId];
+                
+                // Se esse monstro era nosso alvo, limpamos o alvo
+                if(currentTargetId === localId) {
+                    currentTargetId = null;
+                    if(targetRing) targetRing.visible = false;
+                }
+            }
+            // Se faz menos de 2s, mantemos ele na tela onde estava.
+            // Isso cobre "lags" de rede onde 1 ou 2 pacotes se perdem.
+        }
     });
 });
 
@@ -281,7 +341,7 @@ function initEngine() {
     scene.add(dir);
     targetRing = createTargetIndicator(); // <--- CRIA O ANEL
 
-    // CONFIGURA INPUTS (Passando Callbacks)
+    // CONFIGURA INPUTS
     setupInputs(
         // OnChatToggle
         (active) => {
@@ -290,67 +350,12 @@ function initEngine() {
                 socket.emit('chat_message', UI.chatInput.value.trim());
                 UI.chatInput.value = "";
             }
-            // Resetar animação se entrar no chat
             if(active && myPlayer) {
                 playAnim(myPlayer, 'IDLE');
                 socket.emit('player_update', { position: myPlayer.position, rotation: myPlayer.rotation.y, animation: 'IDLE' });
             }
         },
-        // OnAttack
-        () => {
-             if(getIsChatActive() || isAttacking || isSitting || !myPlayer) return;
-             
-             // 1. Tenta achar um alvo NOVO
-             const foundTargetMesh = findBestTarget();
-             
-             // 2. Se achou um alvo novo, atualiza o ID Grudento
-             if (foundTargetMesh) {
-                 currentTargetId = foundTargetMesh.userData.id;
-             }
-
-             // 3. Tenta recuperar o objeto real usando o ID (novo ou antigo)
-             const targetObj = monsters[currentTargetId] || otherPlayers[currentTargetId];
-
-             // 4. Lógica de Rotação e Anel
-             if (targetObj) {
-                 // Calcula a distância real até o alvo selecionado
-                 const dist = myPlayer.position.distanceTo(targetObj.position);
-                 
-                 // --- CORREÇÃO AQUI ---
-                 // Define uma distância máxima para o "Auto-Aim" (ex: 3 metros)
-                 // Se estiver mais longe que isso, o boneco ataca para frente (onde a câmera aponta) sem virar.
-                 const MAX_AUTO_TURN_DIST = 1.5; 
-
-                 if (dist <= MAX_AUTO_TURN_DIST) {
-                     const dx = targetObj.position.x - myPlayer.position.x;
-                     const dz = targetObj.position.z - myPlayer.position.z;
-                     const angle = Math.atan2(dx, dz);
-                     myPlayer.rotation.y = angle;
-                 }
-                 // ---------------------
-                 
-                 // O anel continua aparecendo no alvo, para você saber que ele ainda é o selecionado
-                 targetRing.visible = true;
-                 targetRing.position.set(targetObj.position.x, 0.05, targetObj.position.z);
-             }
-
-             isAttacking = true;
-             playAnim(myPlayer, 'ATTACK');
-             
-             socket.emit('player_update', { 
-                 position: myPlayer.position, 
-                 rotation: myPlayer.rotation.y, 
-                 animation: 'ATTACK' 
-             });
-             
-             socket.emit('attack_request');
-             
-             setTimeout(() => { 
-                 isAttacking = false; 
-                 if(!isSitting) playAnim(myPlayer, 'IDLE'); 
-             }, 800);
-        },
-        // OnSit
+        // OnSit (Space)
         () => {
             if(getIsChatActive() || isAttacking || !myPlayer) return;
             isSitting = !isSitting;
@@ -415,11 +420,24 @@ function loadMap(mapConfig, myData, players, mobs) {
         isPlayerLoading = true; 
     }
 
-    // --- CACHE DE MODELOS DE MONSTROS ---
-    // Só carrega se ainda não estiver na memória
-    if(!monsterTemplates['monster1']) { toLoad++; loader.load('assets/monster1.glb', g=>{monsterTemplates['monster1']=g; checkDone();}); }
-    if(!monsterTemplates['monster2']) { toLoad++; loader.load('assets/monster2.glb', g=>{monsterTemplates['monster2']=g; checkDone();}); }
-    if(!monsterTemplates['pve1']) { toLoad++; loader.load('assets/pve1.glb', g=>{monsterTemplates['pve1']=g; checkDone();}); }
+// --- CACHE DE MODELOS DE MONSTROS (Otimizado) ---
+    // Lista de monstros que precisamos carregar (baseado no mapeamento do server)
+    const monsterAssets = {
+        'monster1': 'assets/monster1.glb',
+        'monster2': 'assets/monster2.glb',
+        'pve1': 'assets/pve1.glb'
+    };
+
+    // Loop automático para carregar apenas o que falta
+    Object.keys(monsterAssets).forEach(key => {
+        if(!monsterTemplates[key]) {
+            toLoad++;
+            loader.load(monsterAssets[key], g => {
+                monsterTemplates[key] = g;
+                checkDone();
+            });
+        }
+    });
 
     // --- CARREGAMENTO DO MAPA (COM BARRA DE PROGRESSO) ---
     loader.load(
@@ -751,28 +769,43 @@ function createChatBubble(mesh, text) {
     }, 6000);
 }
 
-function showDamageNumber(dmg, pos, colorStr) {
-    if(!scene || !camera) return;
-    const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 128;
-    const ctx = canvas.getContext('2d');
-    ctx.font = "bold 40px Arial"; ctx.fillStyle = colorStr; ctx.textAlign = "center";
-    ctx.shadowColor = "black"; ctx.shadowBlur = 4; ctx.lineWidth = 3;
-    ctx.strokeText("-" + dmg, 128, 70); ctx.fillText("-" + dmg, 128, 70);
-    const texture = new THREE.CanvasTexture(canvas);
-    const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
-    const sprite = new THREE.Sprite(material);
-    sprite.position.set(pos.x, pos.y + 1.8, pos.z); 
-    sprite.scale.set(3, 1.5, 1); sprite.renderOrder = 1000;
-    scene.add(sprite);
-    let steps = 0; const maxSteps = 40; 
-    const interval = setInterval(() => {
-        if (!sprite || !scene) { clearInterval(interval); return; }
-        sprite.position.y += 0.03; material.opacity -= 0.025; steps++;
-        if (steps >= maxSteps || material.opacity <= 0) {
-            clearInterval(interval);
-            if(scene) scene.remove(sprite); if(texture) texture.dispose(); if(material) material.dispose();
-        }
-    }, 30);
+// Referência ao container (cache para performance)
+const damageContainer = document.getElementById('damage-container');
+
+function showDamageNumber(dmg, position3D, colorStr) {
+    if (!damageContainer || !camera) return;
+
+    // 1. Projeta a posição 3D para coordenadas 2D da tela
+    // Clonamos para não alterar a posição original do monstro
+    const tempV = position3D.clone();
+    tempV.y += 2.0; // Põe o número um pouco acima da cabeça
+
+    // Matemática de projeção do Three.js
+    tempV.project(camera);
+
+    // Converte de espaço normalizado (-1 a +1) para pixels CSS
+    const x = (tempV.x * .5 + .5) * window.innerWidth;
+    const y = (-(tempV.y * .5) + .5) * window.innerHeight;
+
+    // Se estiver atrás da câmera, não desenha
+    if (tempV.z > 1) return;
+
+    // 2. Cria o elemento HTML
+    const el = document.createElement('div');
+    el.className = 'dmg-number';
+    el.textContent = dmg;
+    el.style.color = colorStr;
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+
+    // 3. Adiciona ao DOM
+    damageContainer.appendChild(el);
+
+    // 4. Remove automaticamente após a animação CSS (0.8s) terminar
+    // Usamos setTimeout para garantir a limpeza da memória
+    setTimeout(() => {
+        if (el.parentNode) el.parentNode.removeChild(el);
+    }, 800);
 }
 
 // --- COLISÃO & LOOP ---
@@ -836,6 +869,54 @@ function findBestTarget() {
     return best;
 }
 
+function performAttack() {
+    if(getIsChatActive() || isSitting || !myPlayer) return;
+    
+    // 1. Tenta achar um alvo NOVO ou manter o atual
+    const foundTargetMesh = findBestTarget();
+    if (foundTargetMesh) {
+        currentTargetId = foundTargetMesh.userData.id;
+    }
+
+    // 2. Lógica de Rotação (Auto-aim)
+    const targetObj = monsters[currentTargetId] || otherPlayers[currentTargetId];
+    if (targetObj) {
+        const dist = myPlayer.position.distanceTo(targetObj.position);
+        const MAX_AUTO_TURN_DIST = 3.0; // Aumentei um pouco para facilitar
+
+        if (dist <= MAX_AUTO_TURN_DIST) {
+            const dx = targetObj.position.x - myPlayer.position.x;
+            const dz = targetObj.position.z - myPlayer.position.z;
+            myPlayer.rotation.y = Math.atan2(dx, dz);
+        }
+        
+        // Atualiza anel visual
+        if(targetRing) {
+             targetRing.visible = true;
+             targetRing.position.set(targetObj.position.x, 0.05, targetObj.position.z);
+        }
+    }
+
+    // 3. Executa Animação e Rede
+    isAttacking = true;
+    playAnim(myPlayer, 'ATTACK');
+    
+    // Envia estado de ataque IMEDIATAMENTE
+    socket.emit('player_update', { 
+        position: myPlayer.position, 
+        rotation: myPlayer.rotation.y, 
+        animation: 'ATTACK' 
+    });
+    
+    socket.emit('attack_request');
+    
+    // Reseta estado após o fim da animação
+    setTimeout(() => { 
+        isAttacking = false; 
+        if(!isSitting) playAnim(myPlayer, 'IDLE'); 
+    }, ATTACK_COOLDOWN);
+}
+
 function animate() {
     requestAnimationFrame(animate);
     
@@ -860,6 +941,13 @@ function animate() {
         updateDebug(currentMapConfig ? currentMapConfig.id : '', myPlayer.position, Object.keys(otherPlayers).length + 1);
         
         const isChatActive = getIsChatActive();
+
+        // >>> NOVA LÓGICA DE ATAQUE AQUI <<<
+        // Se apertar F, não estiver atacando agora, e passou o tempo do cooldown
+        if (!isChatActive && keys['f'] && !isAttacking && (now - lastAttackTime > ATTACK_COOLDOWN)) {
+            performAttack();
+            lastAttackTime = now;
+        }
 
         if(!isChatActive && !isSitting && !isAttacking) { 
             let move = false;
@@ -952,31 +1040,47 @@ function animate() {
         // Não confiamos apenas no que o server diz, pois o server pode dizer "WALK" mas o boneco estar travado na parede no cliente.
         
         // A animação que o servidor MANDOU (Prioridade para Ações)
+        // 3. LÓGICA DE ANIMAÇÃO INTELIGENTE (Com Sincronia de Tempo)
         const serverAnim = p.userData.serverAnimation;
         let finalAnim = 'IDLE';
 
-        // Se for uma ação especial (Ataque, Sentar, Morte), obedecemos o servidor imediatamente
         if (serverAnim === 'ATTACK' || serverAnim === 'SIT' || serverAnim === 'DEAD') {
             finalAnim = serverAnim;
-        } 
-        else {
-            // Se for movimento (WALK/RUN/IDLE), decidimos baseados na velocidade visual local
-            // Se a distância para o alvo for significativa, ele está andando
+        } else {
+            // Se mover visualmente > 0.1, considera correndo/andando
             if (dist > 0.1) {
-                // Se o servidor disse RUN, usamos RUN, senão WALK
                 finalAnim = (serverAnim === 'RUN') ? 'RUN' : 'WALK';
             } else {
                 finalAnim = 'IDLE';
             }
         }
 
-        // Aplica a animação se mudou
+        // --- CORREÇÃO DE SINCRONIA (Cooldown Visual) ---
+        
+        // Caso 1: O estado mudou (Ex: Estava IDLE e virou ATTACK)
         if (p.userData.currentAnimation !== finalAnim) {
             playAnim(p, finalAnim);
             p.userData.currentAnimation = finalAnim;
+
+            // Se acabou de começar a atacar, marca o tempo atual
+            if (finalAnim === 'ATTACK') {
+                p.userData.lastRemoteAttack = now;
+            }
+        } 
+        // Caso 2: O estado continua sendo ATTACK (Segurando F)
+        else if (finalAnim === 'ATTACK') {
+            // Calcula quanto tempo passou desde o último soco que VIMOS ele dar
+            const timeSinceLast = now - (p.userData.lastRemoteAttack || 0);
+
+            // AQUI ESTÁ O SEGREDO:
+            // Só tocamos a animação de novo se já tiver passado o tempo do Cooldown (800ms).
+            // Assim, ignoramos se a animação 3D é curta ou rápida demais.
+            if (timeSinceLast >= ATTACK_COOLDOWN) {
+                playAnim(p, 'ATTACK'); // Toca de novo (reseta a anim)
+                p.userData.lastRemoteAttack = now; // Reseta o cronômetro local para esse player
+            }
         }
 
-        // Atualiza mixer de animação do Three.js
         if(p.userData.mixer) p.userData.mixer.update(delta);
     });
 

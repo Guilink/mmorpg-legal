@@ -18,7 +18,8 @@ const MAP_CONFIG = {
         offset: { x: 0.5, y: 0, z: 0.5 },
         portals: [{ x: -2.10, z: 13.45, radius: 1.0, targetMap: 'floresta', targetX: 0, targetZ: 0 }],
         monsterSpawns: [
-            { type: 'pve1', count: 2, area: { x: 0, z: 0, radius: 8 } }
+            { type: 'pve1', count: 3, area: { x: 0, z: 0, radius: 8 } },
+            { type: 'bat', count: 5, area: { x: 0, z: 0, radius: 8 } },
         ] 
     },
     'floresta': {
@@ -33,9 +34,9 @@ const MAP_CONFIG = {
 };
 
 const MONSTER_TYPES = {
-    'slime': { hp: 80, model: 'monster1', speed: 0.05, range: 1.0, attackSpeed: 2000, dmg: 10, xp: 20 },
-    'bat':   { hp: 150, model: 'monster2', speed: 0.08, range: 1.0, attackSpeed: 1500, dmg: 16, xp: 35 },
-    'pve1':   { hp: 1000, model: 'pve1', speed: 0.12, range: 1.0, attackSpeed: 1000, dmg: 80, xp: 50 }
+    'slime': { hp: 1000, model: 'monster1', speed: 0.05, range: 1.0, attackSpeed: 2000, dmg: 10, xp: 20 },
+    'bat':   { hp: 1000, model: 'monster2', speed: 0.08, range: 1.0, attackSpeed: 1500, dmg: 16, xp: 35 },
+    'pve1':   { hp: 1000, model: 'pve1', speed: 0.12, range: 1.0, attackSpeed: 1000, dmg: 30, xp: 50 }
 };
 
 module.exports = {

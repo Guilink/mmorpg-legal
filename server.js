@@ -229,10 +229,21 @@ setInterval(() => {
                 onAttack: (monster, target) => handleMonsterAttack(monster, target)
             });
 
-            if(!updates[m.map]) updates[m.map] = []; // Cria como Array []
+            if(!updates[m.map]) updates[m.map] = [];
+            
+            // OTIMIZAÇÃO DE BANDA: Arredondar posições para 3 casas decimais
+            // Isso reduz drasticamente o tamanho do pacote JSON enviado
             updates[m.map].push({ 
-                id: m.id, type: m.type, position: m.position, 
-                rotation: m.rotation, animation: m.animation, hp: m.hp 
+                id: m.id, 
+                type: m.type, 
+                position: { 
+                    x: parseFloat(m.position.x.toFixed(3)), 
+                    y: 0, 
+                    z: parseFloat(m.position.z.toFixed(3)) 
+                }, 
+                rotation: parseFloat(m.rotation.toFixed(3)), 
+                animation: m.animation, 
+                hp: m.hp 
             });
         } else {
             deadMonsters.push(m.id);
@@ -252,10 +263,6 @@ setInterval(() => {
     
     // Respawn (MANTENHA ISSO)
     if(Math.random() < 0.05) spawnInitialMonsters();
-
-    // *** SE VOCÊ ADICIONOU O BLOCO "ATUALIZAÇÃO DOS PLAYERS" AQUI, APAGUE-O ***
-    // Não precisamos dele. O evento 'player_moved' já é disparado
-    // quando o cliente envia 'player_update' lá embaixo no código.
 
 }, 100);
 
@@ -387,29 +394,38 @@ socket.on('player_update', (data) => {
         }
     });    
 
-    socket.on('attack_request', () => {
+socket.on('attack_request', () => {
         if (!onlinePlayers[socket.id]) return;
         const attacker = onlinePlayers[socket.id];
         const ATTACK_RANGE = 1.5; 
+        const RANGE_SQ = ATTACK_RANGE * ATTACK_RANGE; // Pre-calcula ao quadrado
         
         let bestTarget = null;
-        let minDist = Infinity;
+        let minDistSq = Infinity; // Muda para Distância ao Quadrado
         let isMonsterTarget = false;
 
+        // Verifica Monstros
         Object.values(monsters).forEach(m => {
             if (m.map !== attacker.map || m.hp <= 0) return;
-            const dist = Math.hypot(m.position.x - attacker.position.x, m.position.z - attacker.position.z);
-            if (dist <= ATTACK_RANGE && dist < minDist) {
-                bestTarget = m; minDist = dist; isMonsterTarget = true;
+            const dx = m.position.x - attacker.position.x;
+            const dz = m.position.z - attacker.position.z;
+            const distSq = (dx*dx) + (dz*dz);
+            
+            if (distSq <= RANGE_SQ && distSq < minDistSq) {
+                bestTarget = m; minDistSq = distSq; isMonsterTarget = true;
             }
         });
 
+        // Verifica Players (PVP)
         if (!bestTarget && MAP_CONFIG[attacker.map].pvp) {
             Object.values(onlinePlayers).forEach(target => {
                 if (target.id === attacker.id || target.map !== attacker.map) return;
-                const dist = Math.hypot(target.position.x - attacker.position.x, target.position.z - attacker.position.z);
-                if (dist <= ATTACK_RANGE && dist < minDist) {
-                    bestTarget = target; minDist = dist; isMonsterTarget = false;
+                const dx = target.position.x - attacker.position.x;
+                const dz = target.position.z - attacker.position.z;
+                const distSq = (dx*dx) + (dz*dz);
+
+                if (distSq <= RANGE_SQ && distSq < minDistSq) {
+                    bestTarget = target; minDistSq = distSq; isMonsterTarget = false;
                 }
             });
         }

@@ -3,35 +3,41 @@
 export const keys = {};
 let isChatActive = false;
 
-// CORREÇÃO: Removemos 'socket' e 'myPlayer' daqui. 
-// Agora a função aceita exatamente os 3 callbacks que o game.js envia.
-export function setupInputs(onChatToggle, onAttack, onSit) {
+export function setupInputs(onChatToggle, onSit) { 
+    // ^ Removemos onAttack dos argumentos, pois trataremos no loop principal
 
-    document.addEventListener('keydown', e => {
-        // Lógica do Chat (Enter)
+document.addEventListener('keydown', e => {
+        // CORREÇÃO 1: Impede que segurar a tecla fique disparando o evento loucamente
+        if (e.repeat) return; 
+
+        // Se o chat estiver aberto...
+        if (isChatActive) {
+            if (e.key === 'Enter') {
+                isChatActive = false;
+                if(onChatToggle) onChatToggle(isChatActive);
+            }
+            return;
+        }
+
+        // Lógica do Chat (Abrir)
         if(e.key === 'Enter') {
-            isChatActive = !isChatActive;
+            isChatActive = true;
+            // Reseta teclas de movimento para o boneco não sair andando sozinho
+            keys['w'] = keys['a'] = keys['s'] = keys['d'] = keys['f'] = false; 
             if(onChatToggle) onChatToggle(isChatActive);
+            return;
         }
         
-        // Comandos de Jogo (Só funcionam se o chat estiver fechado)
-        if(!isChatActive) {
-            keys[e.key.toLowerCase()] = true;
+        // Registra tecla pressionada
+        keys[e.key.toLowerCase()] = true;
 
-            // Space para Sentar
-            if(e.code === 'Space') {
-                if(onSit) onSit(); 
-            }
-            
-            // F para Atacar
-            if(e.key.toLowerCase() === 'f') {
-                if(onAttack) onAttack();
-            }
+        // Space para Sentar
+        if(e.code === 'Space') {
+            if(onSit) onSit(); 
         }
     });
 
     document.addEventListener('keyup', e => {
-        // Solta a tecla (importante para parar de andar)
         keys[e.key.toLowerCase()] = false;
     });
 }
