@@ -8,9 +8,7 @@ const {
     MONSTER_TYPES, 
     ITEM_DATABASE, 
     EQUIP_SLOTS, 
-    ITEM_TYPES,
-    WEAPON_TYPES, // Novo
-    SKILL_DATABASE // Novo (preparando para skills)
+    ITEM_TYPES 
 } = require('./modules/GameConfig');
 
 const express = require('express');
@@ -44,75 +42,60 @@ function saveAccounts() {
 // --- ESTADO GLOBAL ---
 const onlinePlayers = {};
 const monsters = {};
-const groundItems = {}; 
-let groundItemCounter = 0; 
+const groundItems = {}; // Armazena todos os itens caídos no mundo
+let groundItemCounter = 0; // Contador para gerar IDs únicos (item_1, item_2...)
 
 function spawnGroundItem(itemId, qtd, map, x, z) {
     groundItemCounter++;
     const uniqueId = `item_${groundItemCounter}`;
+    
+    // Pequena variação aleatória na posição para itens não caírem um em cima do outro exato
     const rX = x + (Math.random() * 0.5 - 0.25);
     const rZ = z + (Math.random() * 0.5 - 0.25);
 
     groundItems[uniqueId] = {
-        uniqueId: uniqueId, itemId: itemId, qtd: qtd, map: map, x: rX, z: rZ,
-        expiresAt: Date.now() + 40000 
+        uniqueId: uniqueId,
+        itemId: itemId,
+        qtd: qtd,
+        map: map,
+        x: rX,
+        z: rZ,
+        expiresAt: Date.now() + 40000 // Expira em 40 segundos
     };
+
+    // Avisa todos os jogadores do mapa que o item caiu
     io.to(map).emit('ground_item_spawn', groundItems[uniqueId]);
 }
 
-// --- FUNÇÕES AUXILIARES DE MATEMÁTICA ---
-function getDistance(a, b) {
-    const dx = a.x - b.x;
-    const dz = a.z - b.z;
-    return Math.sqrt(dx*dx + dz*dz);
-}
-
-// Verifica se 'target' está na frente de 'attacker' (Cone de 160 graus aprox)
-function isTargetInFront(attacker, target) {
-    // Vetor direção do atacante (Baseado na rotação Y)
-    // Em Three.js/Game Math, geralmente: X = sin(rot), Z = cos(rot)
-    const dirX = Math.sin(attacker.rotation);
-    const dirZ = Math.cos(attacker.rotation);
-
-    // Vetor para o alvo (Normalizado)
-    let toTargetX = target.position.x - attacker.position.x;
-    let toTargetZ = target.position.z - attacker.position.z;
-    const dist = Math.sqrt(toTargetX*toTargetX + toTargetZ*toTargetZ);
-    
-    if (dist === 0) return true; // Mesma posição
-    
-    toTargetX /= dist;
-    toTargetZ /= dist;
-
-    // Produto Escalar (Dot Product)
-    const dot = (dirX * toTargetX) + (dirZ * toTargetZ);
-    
-    // > 0.2 é um cone bem generoso na frente. 
-    return dot > 0.2; 
-}
-
-// --- FUNÇÕES DE RPG ---
+// --- FUNÇÕES DE RPG (Recalculate, XP, Inventário) ---
 
 function recalculateStats(socket) {
+    // 1. Começa com os atributos base do personagem (distribuídos por pontos)
     let totalStr = socket.attributes.str;
     let totalAgi = socket.attributes.agi;
     let totalInt = socket.attributes.int;
     let totalVit = socket.attributes.vit;
 
+    // Variáveis para bônus diretos de equipamentos (ex: Espada que dá +10 ATK direto)
     let bonusHp = 0, bonusMp = 0, bonusAtk = 0, bonusMatk = 0, bonusDef = 0, bonusEva = 0;
 
+    // 2. Percorre os equipamentos equipados
     if (socket.equipment) {
         Object.values(socket.equipment).forEach(itemId => {
-            if (!itemId) return; 
+            if (!itemId) return; // Slot vazio
+
             const itemData = ITEM_DATABASE[itemId];
-            if (!itemData || !itemData.stats) return; 
+            if (!itemData || !itemData.stats) return; // Item inválido ou sem stats
+
             const s = itemData.stats;
 
+            // Soma Atributos Primários (que escalam)
             if(s.str) totalStr += s.str;
             if(s.agi) totalAgi += s.agi;
             if(s.int) totalInt += s.int;
             if(s.vit) totalVit += s.vit;
 
+            // Soma Status Secundários (valores fixos)
             if(s.hp) bonusHp += s.hp;
             if(s.mp) bonusMp += s.mp;
             if(s.atk) bonusAtk += s.atk;
@@ -122,20 +105,27 @@ function recalculateStats(socket) {
         });
     }
 
+    // 3. Calcula os status derivados usando os TOTAIS (Base + Itens)
     const maxHp = 100 + (totalVit * 10) + bonusHp;
     const maxMp = 50 + (totalInt * 10) + bonusMp;
+    
     const def = Math.floor(totalVit * 1) + bonusDef;
     const matk = Math.floor(totalInt * 2) + bonusMatk;
+    
     const atk = 10 + (totalStr * 2) + bonusAtk;
     const eva = Math.floor((totalStr * 0.1) + (totalAgi * 0.5)) + bonusEva;
+    
     const attackSpeed = Math.max(500, 2000 - (totalAgi * 20)); 
 
+    // 4. Salva no socket
     socket.stats = {
         ...socket.stats,
         maxHp, maxMp, atk, matk, def, eva, attackSpeed,
+        // Guardamos os totais para exibir na UI "C" depois (Força: 50 + 5)
         totalAttributes: { str: totalStr, agi: totalAgi, int: totalInt, vit: totalVit }
     };
     
+    // Cura se o HP atual for maior que o novo máximo (ex: trocou equip que dava HP)
     if (socket.stats.hp > maxHp) socket.stats.hp = maxHp;
     if (socket.stats.mp > maxMp) socket.stats.mp = maxMp;
 }
@@ -154,29 +144,39 @@ function gainExperience(socket, amount) {
         leveledUp = true;
     }
     if (leveledUp) {
-        io.to(socket.map).emit('chat_message', { username: 'SISTEMA', message: `${socket.username} subiu para o nível ${socket.level}!`, type: 'system' });
+        io.to(socket.map).emit('chat_message', { 
+            username: 'SISTEMA', message: `${socket.username} subiu para o nível ${socket.level}!`, type: 'system' 
+        });
         socket.emit('level_up_event', { level: socket.level });
     }
     sendStatsUpdate(socket);
 }
 
 function sendInventoryUpdate(socket) {
-    socket.emit('inventory_update', { inventory: socket.inventory, equipment: socket.equipment });
+    socket.emit('inventory_update', {
+        inventory: socket.inventory,
+        equipment: socket.equipment
+    });
+    // Como equipar muda status (HP/ATK), mandamos update de stats junto
     recalculateStats(socket); 
     sendStatsUpdate(socket);
 }
 
 function sendStatsUpdate(socket) {
     socket.emit('update_stats', {
-        stats: socket.stats, level: socket.level, xp: socket.xp, nextLevelXp: socket.nextLevelXp,
-        attributes: socket.attributes, points: socket.pointsToDistribute
+        stats: socket.stats,
+        level: socket.level,
+        xp: socket.xp,
+        nextLevelXp: socket.nextLevelXp,
+        attributes: socket.attributes,
+        points: socket.pointsToDistribute
     });
 }
 
 // --- LÓGICA DE JOGO ---
 
 function handleMonsterAttack(monster, player) {
-    monster.startAttack(); 
+    monster.startAttack(); // Inicia animação e cooldown no objeto monstro
     
     const defense = player.stats.def || 0;
     const rawDmg = monster.config.dmg;
@@ -184,6 +184,7 @@ function handleMonsterAttack(monster, player) {
 
     player.stats.hp = Math.max(0, player.stats.hp - finalDmg);
     
+    // Notifica visual
     io.to(monster.map).emit('monsters_update', [{ 
         id: monster.id, type: monster.type, position: monster.position, 
         rotation: monster.rotation, animation: 'ATTACK', hp: monster.hp 
@@ -205,7 +206,8 @@ function handlePlayerDeath(player) {
     Object.values(monsters).forEach(m => { if(m.targetId === player.id) m.targetId = null; });
 
     io.to(player.map).emit('chat_message', { username: 'SISTEMA', message: `${player.username} desmaiou!`, type: 'system' });
-    sendStatsUpdate(player); 
+    sendStatsUpdate(player); // Atualiza HP cheio no cliente
+
     switchMap(player, RESPAWN_POINT.map, RESPAWN_POINT.x, RESPAWN_POINT.z);
     player.emit('player_respawned', { message: 'Você renasceu no vilarejo.' });
 }
@@ -251,9 +253,15 @@ function spawnInitialMonsters() {
 function savePlayerState(socket) {
     if (!socket.username || !accounts[socket.username]) return;
     accounts[socket.username].data = {
-        map: socket.map, position: socket.position, stats: socket.stats,
-        level: socket.level, xp: socket.xp, points: socket.pointsToDistribute, 
-        attributes: socket.attributes, inventory: socket.inventory, equipment: socket.equipment
+        map: socket.map, 
+        position: socket.position, 
+        stats: socket.stats,
+        level: socket.level, 
+        xp: socket.xp, 
+        points: socket.pointsToDistribute, 
+        attributes: socket.attributes,
+        inventory: socket.inventory,
+        equipment: socket.equipment
     };
     saveAccounts();
 }
@@ -281,13 +289,24 @@ function switchMap(socket, newMapId, x, z) {
     const mapMonsters = {};
     const mapGroundItems = {};
     
-    Object.values(onlinePlayers).forEach(p => { if(p.map === newMapId && p.id !== socket.id) mapPlayers[p.id] = getPublicPlayerData(p); });
-    Object.values(monsters).forEach(m => { if(m.map === newMapId) mapMonsters[m.id] = m; });
-    Object.values(groundItems).forEach(i => { if(i.map === newMapId) mapGroundItems[i.uniqueId] = i; });
+    // Filtra Entidades do Mapa Novo
+    Object.values(onlinePlayers).forEach(p => { 
+        if(p.map === newMapId && p.id !== socket.id) mapPlayers[p.id] = getPublicPlayerData(p); 
+    });
+    Object.values(monsters).forEach(m => { 
+        if(m.map === newMapId) mapMonsters[m.id] = m; 
+    });
+    // Filtra Itens no Chão
+    Object.values(groundItems).forEach(i => { 
+        if(i.map === newMapId) mapGroundItems[i.uniqueId] = i; 
+    });
 
     socket.emit('map_changed', {
-        mapConfig: MAP_CONFIG[newMapId], playerData: getPublicPlayerData(socket),
-        mapPlayers: mapPlayers, mapMonsters: mapMonsters, mapGroundItems: mapGroundItems
+        mapConfig: MAP_CONFIG[newMapId],
+        playerData: getPublicPlayerData(socket),
+        mapPlayers: mapPlayers,
+        mapMonsters: mapMonsters,
+        mapGroundItems: mapGroundItems // <--- ENVIA ITENS NO CHÃO
     });
 
     socket.broadcast.to(newMapId).emit('player_joined', getPublicPlayerData(socket));
@@ -296,41 +315,67 @@ function switchMap(socket, newMapId, x, z) {
 // --- GAME LOOP ---
 setInterval(() => {
     const now = Date.now();
-    const updates = {}; 
+    const updates = {}; // MapID -> Array de Monstros
     const deadMonsters = [];
 
+    // Loop dos Monstros
     Object.values(monsters).forEach(m => {
         if (m.hp > 0) { 
-            m.update(100, onlinePlayers, { onAttack: (monster, target) => handleMonsterAttack(monster, target) });
+            m.update(100, onlinePlayers, {
+                onAttack: (monster, target) => handleMonsterAttack(monster, target)
+            });
+
             if(!updates[m.map]) updates[m.map] = [];
             
+            // OTIMIZAÇÃO: Arredondar posições
             updates[m.map].push({ 
-                id: m.id, type: m.type, 
-                position: { x: parseFloat(m.position.x.toFixed(3)), y: 0, z: parseFloat(m.position.z.toFixed(3)) }, 
-                rotation: parseFloat(m.rotation.toFixed(3)), animation: m.animation, hp: m.hp 
+                id: m.id, 
+                type: m.type, 
+                position: { 
+                    x: parseFloat(m.position.x.toFixed(3)), 
+                    y: 0, 
+                    z: parseFloat(m.position.z.toFixed(3)) 
+                }, 
+                rotation: parseFloat(m.rotation.toFixed(3)), 
+                animation: m.animation, 
+                hp: m.hp 
             });
         } else {
             deadMonsters.push(m.id);
         }
     });
 
+    // Loop de Monstros Mortos
     deadMonsters.forEach(id => {
         const m = monsters[id];
         if(m) { delete monsters[id]; io.to(m.map).emit('monster_dead', id); }
     });
 
-    Object.keys(updates).forEach(mapId => { io.to(mapId).emit('monsters_update', updates[mapId]); });
+    // Envio dos Pacotes
+    Object.keys(updates).forEach(mapId => {
+        io.to(mapId).emit('monsters_update', updates[mapId]);
+    });
+    
+    // Respawn
     if(Math.random() < 0.05) spawnInitialMonsters();
 
+// --- LIMPEZA DE ITENS EXPIRADOS ---
     Object.values(groundItems).forEach(item => {
         if (now > item.expiresAt) {
             delete groundItems[item.uniqueId];
+            
+            // MUDANÇA: Em vez de 'ground_item_remove', emitimos 'ground_item_expire'
             io.to(item.map).emit('ground_item_expire', item.uniqueId); 
         }
     });
+
 }, 100);
 
-setInterval(() => { io.emit('server_stats', { total: Object.keys(onlinePlayers).length }); }, 2000);
+// --- STATUS DO SERVIDOR ---
+setInterval(() => {
+    const total = Object.keys(onlinePlayers).length;
+    io.emit('server_stats', { total });
+}, 2000);
 
 // --- CONEXÕES SOCKET ---
 io.on('connection', (socket) => {
@@ -381,11 +426,18 @@ io.on('connection', (socket) => {
             socket.join(socket.map);
 
             const mapPlayers = {};
-            Object.values(onlinePlayers).forEach(p => { if(p.map === socket.map && p.id !== socket.id) mapPlayers[p.id] = getPublicPlayerData(p); });
+            Object.values(onlinePlayers).forEach(p => { 
+                if(p.map === socket.map && p.id !== socket.id) mapPlayers[p.id] = getPublicPlayerData(p); 
+            });
             const mapMonsters = {};
-            Object.values(monsters).forEach(m => { if(m.map === socket.map) mapMonsters[m.id] = m; });
+            Object.values(monsters).forEach(m => { 
+                if(m.map === socket.map) mapMonsters[m.id] = m; 
+            });
+            // Filtra Itens no Chão
             const mapGroundItems = {};
-            Object.values(groundItems).forEach(i => { if(i.map === socket.map) mapGroundItems[i.uniqueId] = i; });
+            Object.values(groundItems).forEach(i => { 
+                if(i.map === socket.map) mapGroundItems[i.uniqueId] = i; 
+            });
 
             const myData = getPublicPlayerData(socket);
             myData.level = socket.level;
@@ -400,6 +452,7 @@ io.on('connection', (socket) => {
                 monsterTypes: MONSTER_TYPES, itemDB: ITEM_DATABASE,
                 inventory: socket.inventory, equipment: socket.equipment
             });
+            
             socket.broadcast.to(socket.map).emit('player_joined', getPublicPlayerData(socket));
         } else {
             socket.emit('login_error', 'Dados incorretos.');
@@ -419,14 +472,20 @@ io.on('connection', (socket) => {
         socket.animation = data.animation;
         
         socket.broadcast.to(socket.map).emit('player_moved', { 
-            id: socket.id, username: socket.username, position: data.position, rotation: data.rotation, animation: data.animation 
+            id: socket.id, 
+            username: socket.username, 
+            position: data.position, 
+            rotation: data.rotation, 
+            animation: data.animation 
         });
 
         if (mapConfig.portals) {
             mapConfig.portals.forEach(portal => {
                 const dx = socket.position.x - portal.x;
                 const dz = socket.position.z - portal.z;
-                if (Math.sqrt(dx*dx + dz*dz) < portal.radius) switchMap(socket, portal.targetMap, portal.targetX, portal.targetZ);
+                if (Math.sqrt(dx*dx + dz*dz) < portal.radius) {
+                    switchMap(socket, portal.targetMap, portal.targetX, portal.targetZ);
+                }
             });
         }
     });
@@ -446,118 +505,92 @@ io.on('connection', (socket) => {
         }
     });    
 
-    // --- SISTEMA DE ATAQUE (ATUALIZADO PARA RANGED) ---
-    socket.on('attack_request', (targetId) => {
+    socket.on('attack_request', () => {
         if (!onlinePlayers[socket.id]) return;
         const attacker = onlinePlayers[socket.id];
+        const ATTACK_RANGE = 1.5; 
+        const RANGE_SQ = ATTACK_RANGE * ATTACK_RANGE;
         
-        let weaponId = attacker.equipment.weapon;
-        let weaponData = weaponId ? ITEM_DATABASE[weaponId] : null;
-        
-        let attackRange = 2.0; 
-        let isRanged = false;
-        
-        if (weaponData) {
-            if (weaponData.range) attackRange = weaponData.range;
-            if (weaponData.weaponType === WEAPON_TYPES.RANGED) isRanged = true;
-        }
-
-        let target = null;
+        let bestTarget = null;
+        let minDistSq = Infinity;
         let isMonsterTarget = false;
 
-        if (targetId) {
-            if (monsters[targetId] && monsters[targetId].map === attacker.map && monsters[targetId].hp > 0) {
-                target = monsters[targetId];
-                isMonsterTarget = true;
-            } else if (onlinePlayers[targetId] && onlinePlayers[targetId].map === attacker.map && MAP_CONFIG[attacker.map].pvp) {
-                target = onlinePlayers[targetId];
-                isMonsterTarget = false;
+        // Monstros
+        Object.values(monsters).forEach(m => {
+            if (m.map !== attacker.map || m.hp <= 0) return;
+            const dx = m.position.x - attacker.position.x;
+            const dz = m.position.z - attacker.position.z;
+            const distSq = (dx*dx) + (dz*dz);
+            if (distSq <= RANGE_SQ && distSq < minDistSq) {
+                bestTarget = m; minDistSq = distSq; isMonsterTarget = true;
             }
-        }
+        });
 
-        if (!target && !isRanged) {
-            let bestDistSq = Infinity;
-            const MELEE_AUTOAIM = 2.5 * 2.5;
-
-            Object.values(monsters).forEach(m => {
-                if (m.map !== attacker.map || m.hp <= 0) return;
-                const distSq = getDistance(m.position, attacker.position);
-                if (distSq * distSq <= MELEE_AUTOAIM && distSq < bestDistSq) {
-                    target = m; bestDistSq = distSq; isMonsterTarget = true;
+        // Players (PVP)
+        if (!bestTarget && MAP_CONFIG[attacker.map].pvp) {
+            Object.values(onlinePlayers).forEach(target => {
+                if (target.id === attacker.id || target.map !== attacker.map) return;
+                const dx = target.position.x - attacker.position.x;
+                const dz = target.position.z - attacker.position.z;
+                const distSq = (dx*dx) + (dz*dz);
+                if (distSq <= RANGE_SQ && distSq < minDistSq) {
+                    bestTarget = target; minDistSq = distSq; isMonsterTarget = false;
                 }
             });
         }
 
-        if (target) {
-            const dist = getDistance(target.position, attacker.position);
-            
-            if (dist > attackRange + 1.0) return; 
-
-            if (isRanged) {
-                if (!isTargetInFront(attacker, target)) return;
-            }
-
+        if (bestTarget) {
             const baseDmg = attacker.stats.atk || 10;
             const variation = (Math.random() * 0.2) + 0.9; 
             const dmg = Math.floor(baseDmg * variation);
+            
             let currentHp = 0;
-            let realTargetId = target.id;
+            let targetId = bestTarget.id;
 
-            // 1. APLICA O DANO NOS DADOS
             if (isMonsterTarget) {
-                currentHp = target.takeDamage(dmg, attacker.id);
-            } else {
-                const targetDef = target.stats.def || 0;
-                const pvpDmg = Math.max(1, dmg - (targetDef * 0.5));
-                target.stats.hp = Math.max(0, target.stats.hp - pvpDmg);
-                currentHp = target.stats.hp;
-            }
-
-            // 2. ENVIA OS PACOTES VISUAIS AGORA (ANTES DE MATAR/REMOVER) !!!
-            // Isso garante que o cliente receba dano e flecha antes do monstro sumir
-            io.to(attacker.map).emit('damage_dealt', {
-                targetId: realTargetId, attackerId: attacker.id, damage: Math.floor(dmg), newHp: currentHp, isMonster: isMonsterTarget
-            });
-
-            if (isRanged) {
-                io.to(attacker.map).emit('projectile_fired', {
-                    shooterId: attacker.id,
-                    targetId: realTargetId,
-                    type: 'ARROW'
-                });
-            }
-
-            // 3. AGORA VERIFICA SE MORREU E DELETA
-            if (currentHp <= 0) {
-                if (isMonsterTarget) {
-                    const type = target.type;
-                    const mapId = target.map;
+                currentHp = bestTarget.takeDamage(dmg, attacker.id);
+                if (currentHp <= 0) {
+                    const type = bestTarget.type;
+                    const mapId = bestTarget.map;
                     const mobConfig = MONSTER_TYPES[type];
                     
+                    // --- SISTEMA DE DROP (NOVO) ---
                     if (mobConfig.drops) {
                         mobConfig.drops.forEach(drop => {
-                            if (Math.random() * 100 <= drop.chance) {
-                                spawnGroundItem(drop.itemId, 1, mapId, target.position.x, target.position.z);
+                            const roll = Math.random() * 100;
+                            if (roll <= drop.chance) {
+                                spawnGroundItem(drop.itemId, 1, mapId, bestTarget.position.x, bestTarget.position.z);
                             }
                         });
                     }
+                    // -----------------------------
 
-                    delete monsters[realTargetId];
-                    io.to(attacker.map).emit('monster_dead', realTargetId); // O cliente deleta aqui
+                    delete monsters[targetId];
+                    io.to(attacker.map).emit('monster_dead', targetId);
                     
                     attacker.stats.cash += 10;
                     gainExperience(attacker, mobConfig.xp || 20);
                     scheduleMonsterRespawn(type, mapId);
-                } else {
-                    handlePlayerDeath(target);
                 }
             } else {
-                // Se não morreu e for player, atualiza stats
-                if (!isMonsterTarget) sendStatsUpdate(target);
+                const targetDef = bestTarget.stats.def || 0;
+                const pvpDmg = Math.max(1, dmg - (targetDef * 0.5));
+                bestTarget.stats.hp = Math.max(0, bestTarget.stats.hp - pvpDmg);
+                currentHp = bestTarget.stats.hp;
+                
+                if (currentHp <= 0) handlePlayerDeath(bestTarget);
+                else sendStatsUpdate(bestTarget); 
             }
+
+            io.to(attacker.map).emit('damage_dealt', {
+                targetId: targetId, attackerId: attacker.id, damage: Math.floor(dmg), newHp: currentHp, isMonster: isMonsterTarget
+            });
         }
     });
 
+    // --- SISTEMA DE INVENTÁRIO & DROPS ---
+
+    // 1. USAR ITEM
     socket.on('use_item', (slotIndex) => {
         if (!socket.inventory[slotIndex]) return;
         
@@ -566,6 +599,7 @@ io.on('connection', (socket) => {
         if (!dbItem) return;
 
         if (dbItem.type === ITEM_TYPES.EQUIPMENT) {
+            // ... (código de equipar existente, mantenha igual) ...
             const slot = dbItem.slot;
             const currentEquippedId = socket.equipment[slot];
             socket.equipment[slot] = item.id;
@@ -576,10 +610,12 @@ io.on('connection', (socket) => {
             sendInventoryUpdate(socket);
         }
         else if (dbItem.type === ITEM_TYPES.CONSUMABLE) {
+            // --- MODIFICAÇÃO PARA EFEITOS VISUAIS ---
             let vfxType = null;
+
             if (dbItem.effect.hp) {
                 socket.stats.hp = Math.min(socket.stats.maxHp, socket.stats.hp + dbItem.effect.hp);
-                vfxType = 'POTION_HP'; 
+                vfxType = 'POTION_HP'; // Identificador do efeito
             }
             if (dbItem.effect.mp) {
                 socket.stats.mp = Math.min(socket.stats.maxMp, socket.stats.mp + dbItem.effect.mp);
@@ -590,12 +626,18 @@ io.on('connection', (socket) => {
             if (item.qtd <= 0) socket.inventory.splice(slotIndex, 1);
             sendInventoryUpdate(socket);
 
+            // AVISA TODOS NO MAPA SOBRE O EFEITO
             if (vfxType) {
-                io.to(socket.map).emit('play_vfx', { targetId: socket.id, type: vfxType });
+                io.to(socket.map).emit('play_vfx', {
+                    targetId: socket.id,
+                    type: vfxType
+                });
             }
+            // ----------------------------------------
         }
     });
 
+    // 2. DESEQUIPAR
     socket.on('unequip_item', (slotName) => {
         const itemId = socket.equipment[slotName];
         if (!itemId) return;
@@ -604,22 +646,33 @@ io.on('connection', (socket) => {
         sendInventoryUpdate(socket);
     });    
 
+    // 3. JOGAR NO CHÃO (DROP DO JOGADOR)
     socket.on('drop_item_request', (data) => {
         if (!socket.inventory[data.slotIndex]) return;
         const item = socket.inventory[data.slotIndex];
+        
         if (data.qtd <= 0 || data.qtd > item.qtd) return;
+
         spawnGroundItem(item.id, data.qtd, socket.map, socket.position.x, socket.position.z);
+
         item.qtd -= data.qtd;
-        if (item.qtd <= 0) socket.inventory.splice(data.slotIndex, 1);
+        if (item.qtd <= 0) {
+            socket.inventory.splice(data.slotIndex, 1);
+        }
         sendInventoryUpdate(socket);
     });
 
+    // 4. PEGAR DO CHÃO (PICKUP)
     socket.on('pickup_request', (uniqueId) => {
         const gItem = groundItems[uniqueId];
+        
+        // Valida se existe e mapa
         if (!gItem || gItem.map !== socket.map) return;
+        
+        // Valida distância
         const dx = socket.position.x - gItem.x;
         const dz = socket.position.z - gItem.z;
-        if (dx*dx + dz*dz > 4.0) return; // Aumentei raio de pickup para 2m (4m²)
+        if (dx*dx + dz*dz > 2.0) return; // Raio 2m
 
         const itemConfig = ITEM_DATABASE[gItem.itemId];
         const isEquip = itemConfig.type === ITEM_TYPES.EQUIPMENT;

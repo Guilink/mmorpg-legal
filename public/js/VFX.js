@@ -494,3 +494,88 @@ export const ParticleManager = {
         ParticleManager.emitters = [];
     }
 };
+
+let arrowTemplate = null;
+
+export const ProjectileManager = {
+    projectiles: [],
+
+    loadAsset: (loader) => {
+        loader.load('assets/arrow.glb', (gltf) => {
+            // 1. Cria um "Pai" vazio para corrigir a rotação
+            const wrapper = new THREE.Group();
+            const model = gltf.scene;
+
+            // 2. Ajusta a Escala para o tamanho real (estava 10.0, agora 0.8)
+            model.scale.set(1.1, 1.1, 1.1); 
+            
+            // 3. CORREÇÃO DE ROTAÇÃO:
+            // Se a flecha aponta para baixo, giramos ela 90 graus no eixo X
+            // Tente Math.PI / 2. Se ficar apontando para trás, mude para -Math.PI / 2
+            model.rotation.x = -Math.PI / 2; 
+
+            // Adiciona o modelo ao wrapper
+            wrapper.add(model);
+
+            // O template agora é o Wrapper (que tem a rotação interna corrigida)
+            arrowTemplate = wrapper;
+            
+            console.log(">> ARROW.GLB Carregado e corrigido!");
+        }, undefined, (error) => {
+            console.error("ERRO ao carregar arrow.glb:", error);
+        });
+    },
+
+    spawn: (scene, startObj, targetObj) => {
+        if (!arrowTemplate || !startObj || !targetObj) return;
+
+        const arrow = arrowTemplate.clone();
+        arrow.position.copy(startObj.position);
+        arrow.position.y += 1.2; 
+
+        // Salva a posição inicial do alvo
+        const initialTargetPos = targetObj.position.clone();
+        initialTargetPos.y += 1.0;
+
+        arrow.userData = {
+            target: targetObj,       // Referência ao objeto (se vivo)
+            lastPos: initialTargetPos, // Última posição válida (caso morra)
+            speed: 18.0
+        };
+
+        scene.add(arrow);
+        ProjectileManager.projectiles.push(arrow);
+    },
+
+    update: (delta, scene) => {
+        for (let i = ProjectileManager.projectiles.length - 1; i >= 0; i--) {
+            const arrow = ProjectileManager.projectiles[i];
+            const data = arrow.userData;
+            let targetPos = null;
+
+            // Lógica Inteligente:
+            // 1. Se o alvo ainda existe na cena, atualizamos a posição dele.
+            if (data.target && data.target.parent) {
+                targetPos = data.target.position.clone();
+                targetPos.y += 1.0; // Mira no peito
+                data.lastPos.copy(targetPos); // Atualiza cache
+            } else {
+                // 2. Se o alvo sumiu (morreu), usamos a última posição conhecida.
+                // Assim a flecha termina o trajeto até o "cadáver" invisível.
+                targetPos = data.lastPos;
+            }
+
+            const dist = arrow.position.distanceTo(targetPos);
+
+            if (dist < 0.5) {
+                scene.remove(arrow);
+                ProjectileManager.projectiles.splice(i, 1);
+                continue;
+            }
+
+            const direction = new THREE.Vector3().subVectors(targetPos, arrow.position).normalize();
+            arrow.lookAt(targetPos);
+            arrow.position.add(direction.multiplyScalar(data.speed * delta));
+        }
+    }
+};

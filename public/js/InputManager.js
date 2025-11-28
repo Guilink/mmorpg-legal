@@ -11,27 +11,36 @@ export function getIsChatActive() {
     return isChatActive;
 }
 
-// AGORA ACEITA 6 FUNÇÕES (A última é o onPickup)
-export function setupInputs(onEnterPress, onSit, onAttack, onToggleStatus, onToggleInventory, onPickup, onHotkey) { 
+// ADICIONADO: onTab no final dos argumentos
+export function setupInputs(onEnterPress, onSit, onAttack, onToggleStatus, onToggleInventory, onPickup, onHotkey, onTab) { 
     
-    // --- BLOQUEIO GERAL DO BOTÃO DIREITO (CONTEXT MENU) ---
     document.addEventListener('contextmenu', event => event.preventDefault());
 
     document.addEventListener('keydown', e => {
         if (e.repeat) return; 
 
-        // Se estiver no chat, ignora números (para poder digitar números no chat)
         if (isChatActive) {
             if (e.key === 'Enter') if(onEnterPress) onEnterPress();
             return;
         }
 
         // --- ATALHOS DA HOTBAR (1 a 6) ---
-        // Verifica se a tecla é um número entre 1 e 6
         if (['1', '2', '3', '4', '5', '6'].includes(e.key)) {
             if (onHotkey) onHotkey(parseInt(e.key));
             return;
         } 
+
+        // --- ATALHO DE PEGAR ITEM (Q) ---
+        if (e.key.toLowerCase() === 'q') {
+            if(onPickup) onPickup();
+        }
+
+        // --- NOVO: ATALHO DE TAB (TARGET) ---
+        if (e.key === 'Tab') {
+            e.preventDefault(); // Impede sair do foco da janela
+            if(onTab) onTab();
+            return;
+        }
 
         // --- ATALHOS DE UI ---
         if (e.altKey && e.key.toLowerCase() === 'a') {
@@ -43,18 +52,6 @@ export function setupInputs(onEnterPress, onSit, onAttack, onToggleStatus, onTog
         if (e.altKey && e.key.toLowerCase() === 'e') {
             e.preventDefault();
             if (onToggleInventory) onToggleInventory();
-            return;
-        }
-
-        // --- ATALHO DE PEGAR ITEM (NOVO) ---
-        if (e.key.toLowerCase() === 'q') {
-            if(onPickup) onPickup();
-            // Não damos return aqui para permitir andar e pegar ao mesmo tempo se quiser
-        }
-        // -----------------------------------
-
-        if (isChatActive) {
-            if (e.key === 'Enter') if(onEnterPress) onEnterPress();
             return;
         }
 

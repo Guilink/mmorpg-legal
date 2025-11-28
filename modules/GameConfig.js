@@ -14,23 +14,46 @@ const RESPAWN_POINT = { map: 'vilarejo', x: 0, z: 0 };
 
 // --- TIPOS DE ITENS ---
 const ITEM_TYPES = {
-    CONSUMABLE: 'consumable', // Poções, Comidas
-    EQUIPMENT: 'equipment',   // Armas, Armaduras
-    MATERIAL: 'material'      // Drops, Quest items
+    CONSUMABLE: 'consumable',
+    EQUIPMENT: 'equipment',
+    MATERIAL: 'material'
 };
 
 const EQUIP_SLOTS = {
     WEAPON: 'weapon',
     ARMOR: 'armor',
     HEAD: 'head',
-    LEGS: 'legs', // Botas
+    LEGS: 'legs',
     ACCESSORY: 'accessory'
 };
 
+const WEAPON_TYPES = {
+    MELEE: 'melee',
+    RANGED: 'ranged'
+};
+
+// --- BANCO DE DADOS DE SKILLS (NOVO) ---
+const SKILL_DATABASE = {
+    'fireball': {
+        id: 'fireball', name: "Bola de Fogo", type: 'CASTING',
+        castTime: 1500, cooldown: 3000, range: 15, manaCost: 10,
+        damage: 40, animation: 'ATTACK' 
+    },
+    'strong_slash': {
+        id: 'strong_slash', name: "Golpe Feroz", type: 'MELEE',
+        castTime: 0, cooldown: 5000, range: 2.5, manaCost: 5,
+        damage: 30, animation: 'ATTACK'
+    },
+    'heal': {
+        id: 'heal', name: "Cura Menor", type: 'SUPPORT',
+        castTime: 1000, cooldown: 4000, range: 10, manaCost: 15,
+        effect: { hp: 50 }, animation: 'IDLE' // No futuro teremos animação de cast
+    }
+};
+
 // --- BANCO DE DADOS DE ITENS ---
-// A chave é o ID do item.
 const ITEM_DATABASE = {
-    // --- CONSUMÍVEIS (ID 1-99) ---
+    // --- CONSUMÍVEIS ---
     1: { 
         id: 1, name: "Poção de Vida P", type: ITEM_TYPES.CONSUMABLE, 
         icon: "pot_hp_s.png", description: "Recupera 50 HP",
@@ -42,28 +65,38 @@ const ITEM_DATABASE = {
         effect: { mp: 30 } 
     },
 
-    // --- EQUIPAMENTOS (ID 100-299) ---
+    // --- EQUIPAMENTOS ---
     100: { 
         id: 100, name: "Espada de Madeira", type: ITEM_TYPES.EQUIPMENT, slot: EQUIP_SLOTS.WEAPON,
-        icon: "sword_wood.png", description: "Uma espada simples de treino.",
-        stats: { atk: 5 } // Dá +5 de Ataque direto
+        weaponType: WEAPON_TYPES.MELEE, range: 2.0,
+        icon: "sword_wood.png", description: "Uma espada simples.",
+        stats: { atk: 5 } 
     },
     101: { 
         id: 101, name: "Espada de Ferro", type: ITEM_TYPES.EQUIPMENT, slot: EQUIP_SLOTS.WEAPON,
-        icon: "sword_iron.png", description: "Lâmina afiada e pesada.",
-        stats: { atk: 15, str: 2 } // Dá +15 ATK e +2 de Força
+        weaponType: WEAPON_TYPES.MELEE, range: 2.0,
+        icon: "sword_iron.png", description: "Lâmina afiada.",
+        stats: { atk: 15, str: 2 } 
     },
+    // --- NOVO ITEM: ARCO ---
+    102: { 
+        id: 102, name: "Arco Curto", type: ITEM_TYPES.EQUIPMENT, slot: EQUIP_SLOTS.WEAPON,
+        weaponType: WEAPON_TYPES.RANGED, range: 12.0, // Alcance maior
+        icon: "bow_oak.png", description: "Ataque a distância.",
+        stats: { atk: 8, agi: 2 } 
+    },
+
     200: {
         id: 200, name: "Túnica de Linho", type: ITEM_TYPES.EQUIPMENT, slot: EQUIP_SLOTS.ARMOR,
         icon: "armor_cloth.png", description: "Proteção básica.",
-        stats: { def: 3, hp: 20 } // Dá +3 DEF e +20 HP Máximo
+        stats: { def: 3, hp: 20 } 
     },
     
-    // --- MATERIAIS / DROPS (ID 300+) ---
+    // --- MATERIAIS ---
     300: { 
         id: 300, name: "Gosma Verde", type: ITEM_TYPES.MATERIAL, 
         icon: "slime_goo.png", description: "Restos de um Slime.",
-        price: 5 // Valor de venda no NPC
+        price: 5 
     }
 };
 
@@ -89,91 +122,33 @@ const MAP_CONFIG = {
     }
 };
 
-const BEHAVIOR = {
-    NEUTRAL: 0,
-    AGGRESSIVE: 1
-};
+const BEHAVIOR = { NEUTRAL: 0, AGGRESSIVE: 1 };
 
 const MONSTER_TYPES = {
     'bolota': { 
-        name: 'Bolota Cascavél',
-        drops: [{ itemId: 300, chance: 40 }, { itemId: 1, chance: 15 }],
-        model: 'm1_slimecobra', 
-        scale: 0.40,
-        hp: 80, maxHp: 80,
-        speed: 0.06,
-        range: 1.0,
-        attackSpeed: 1800,
-        dmg: 8,
-        xp: 15,
-        behavior: BEHAVIOR.NEUTRAL, // Passivo
-        sightRange: 10.0        
+        name: 'Bolota Cascavél', drops: [{ itemId: 300, chance: 40 }, { itemId: 1, chance: 15 }],
+        model: 'm1_slimecobra', scale: 0.40, hp: 80, maxHp: 80, speed: 0.06, range: 1.0,
+        attackSpeed: 1800, dmg: 8, xp: 15, behavior: BEHAVIOR.NEUTRAL, sightRange: 10.0        
     },
-
     'morcego': { 
-        name: 'Morcego',
-        model: 'm2_morcego', 
-        scale: 0.30,
-        hp: 130, maxHp: 130,
-        speed: 0.12,
-        range: 1.0,
-        attackSpeed: 1500,
-        dmg: 14,
-        xp: 30,
-        behavior: BEHAVIOR.AGGRESSIVE, // Passivo
-        sightRange: 8.0          
+        name: 'Morcego', model: 'm2_morcego', scale: 0.30, hp: 130, maxHp: 130, speed: 0.12, range: 1.0,
+        attackSpeed: 1500, dmg: 14, xp: 30, behavior: BEHAVIOR.AGGRESSIVE, sightRange: 8.0          
     },
-
     'verdinho': { 
-        name: 'Verdinho',
-        model: 'm3_slimeverde', 
-        scale: 0.05,
-        hp: 300, maxHp: 300,
-        speed: 0.10,
-        range: 1.0,
-        attackSpeed: 1200,
-        dmg: 22,
-        xp: 50,
-        behavior: BEHAVIOR.NEUTRAL, // Passivo
-        sightRange: 10.0          
+        name: 'Verdinho', model: 'm3_slimeverde', scale: 0.05, hp: 300, maxHp: 300, speed: 0.10, range: 1.0,
+        attackSpeed: 1200, dmg: 22, xp: 50, behavior: BEHAVIOR.NEUTRAL, sightRange: 10.0          
     },
-
     'cogumelo': {
-        name: 'Cogulouco',
-        model: 'm4_cogumelo',
-        scale: 0.05,
-        hp: 900, maxHp: 900,
-        speed: 0.10,
-        range: 1.0,
-        attackSpeed: 2000,
-        dmg: 35,
-        xp: 120,
-        behavior: BEHAVIOR.NEUTRAL, // Passivo
-        sightRange: 10.0          
+        name: 'Cogulouco', model: 'm4_cogumelo', scale: 0.05, hp: 900, maxHp: 900, speed: 0.10, range: 1.0,
+        attackSpeed: 2000, dmg: 35, xp: 120, behavior: BEHAVIOR.NEUTRAL, sightRange: 10.0          
     },
-
     'cogumelochefe': {
-        name: 'Mestre Cogulouco',
-        model: 'm4_cogumelo',
-        scale: 0.07,
-        hp: 2000, maxHp: 2000,
-        speed: 0.10,
-        range: 1.3,
-        attackSpeed: 1800,
-        dmg: 60,
-        xp: 300,
-        behavior: BEHAVIOR.AGGRESSIVE, // Passivo
-        sightRange: 10.0         
+        name: 'Mestre Cogulouco', model: 'm4_cogumelo', scale: 0.07, hp: 2000, maxHp: 2000, speed: 0.10, range: 1.3,
+        attackSpeed: 1800, dmg: 60, xp: 300, behavior: BEHAVIOR.AGGRESSIVE, sightRange: 10.0         
     }
 };
 
 module.exports = {
-    LEVEL_TABLE,
-    BASE_ATTRIBUTES,
-    RESPAWN_POINT,
-    MAP_CONFIG,
-    MONSTER_TYPES,
-    ITEM_DATABASE,
-    ITEM_TYPES,
-    EQUIP_SLOTS
+    LEVEL_TABLE, BASE_ATTRIBUTES, RESPAWN_POINT, MAP_CONFIG,
+    MONSTER_TYPES, ITEM_DATABASE, ITEM_TYPES, EQUIP_SLOTS, WEAPON_TYPES, SKILL_DATABASE
 };
