@@ -343,3 +343,94 @@ body { overflow: hidden; background: #000; }
     text-shadow: 1px 1px 1px #000;
     pointer-events: none; /* Ignora cliques */
 }
+
+/* BARRA DE CAST */
+#cast-bar-container {
+    position: absolute;
+    bottom: 120px; /* Acima da hotbar */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 250px;
+    text-align: center;
+    pointer-events: none;
+    z-index: 200;
+}
+
+#cast-name {
+    color: #ffd700;
+    font-weight: bold;
+    font-size: 14px;
+    text-shadow: 1px 1px 0 #000;
+    margin-bottom: 3px;
+}
+
+.cast-bg {
+    width: 100%;
+    height: 12px;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid #555;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+#cast-fill {
+    width: 0%;
+    height: 100%;
+    background: #ff8800; /* Laranja fogo */
+    transition: width 0.1s linear; /* Atualização suave */
+}
+
+/* JANELA DE SKILLS */
+#skills-window {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 300px; background: rgba(0,0,0,0.95); border: 2px solid #a0f;
+    border-radius: 8px; color: white; z-index: 2005; box-shadow: 0 0 20px #000;
+}
+
+#skills-window .win-header { background: #550088; }
+
+.skills-grid {
+    display: flex; flex-direction: column; gap: 5px; max-height: 250px; overflow-y: auto;
+}
+
+.skill-item {
+    display: flex; gap: 10px; padding: 5px; background: #222; border: 1px solid #444; align-items: center;
+}
+
+.skill-icon {
+    width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+    font-weight: bold; font-size: 20px; border: 1px solid #fff;
+}
+
+.skill-info { flex: 1; }
+.skill-name { font-weight: bold; font-size: 13px; color: #e0e0e0; }
+.skill-desc { font-size: 11px; color: #aaa; }
+
+#btn-skills {
+    width: 35px; height: 35px; 
+    background: #222; border: 2px solid #777; color: #fff;
+    text-align: center; line-height: 31px; font-weight: bold; 
+    cursor: pointer; border-radius: 4px; 
+    transition: 0.2s; font-family: sans-serif;
+}
+#btn-skills:hover { 
+    background: #444; border-color: #a0f; color: #a0f; /* Roxo para Skills */
+}
+
+/* EFEITO DE COOLDOWN */
+.hotkey-slot {
+    position: relative;
+    overflow: hidden;
+}
+
+.cd-overlay {
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 100%; height: 0%;
+    background-color: rgba(0, 0, 0, 0.75);
+    z-index: 10;
+    pointer-events: none;
+    transition: height linear;
+}
+
+.hotkey-qtd { z-index: 11; }

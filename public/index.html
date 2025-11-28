@@ -62,6 +62,7 @@
     <div class="hud-buttons" id="hud-buttons" style="display: none;">
         <div id="btn-status" onclick="toggleStatusWindow()">A</div>
         <div id="btn-inventory" onclick="toggleInventory()">E</div>
+        <div id="btn-skills" onclick="toggleSkills()">H</div>
     </div>
 
     <!-- JANELA DE STATUS -->
@@ -165,6 +166,22 @@
         </div>
     </div>
 
+    <!-- JANELA DE SKILLS -->
+    <div id="skills-window" style="display: none;">
+        <div class="win-header">
+            <span>HABILIDADES</span>
+            <span class="close-btn" onclick="toggleSkills()">&#10006;</span>
+        </div>
+        <div class="win-content">
+            <div id="skills-list" class="skills-grid">
+                <!-- Lista será gerada via JS -->
+            </div>
+        </div>
+        <div class="win-footer">
+            <button class="btn-cancel" onclick="toggleSkills()">FECHAR</button>
+        </div>
+    </div>    
+
     <!-- DEBUG PANEL -->
     <div id="debug-panel" style="display: none;">
         <div>FPS: <span id="dbg-fps" style="color: #ffff00">0</span></div>
@@ -195,6 +212,14 @@
     <div id="canvas-container"></div>
     <!-- DANOS FLUTUANTES -->
     <div id="damage-container"></div>
+
+    <!-- BARRA DE CAST (CONJURAÇÃO) -->
+    <div id="cast-bar-container" style="display: none;">
+        <div id="cast-name">Bola de Fogo</div>
+        <div class="cast-bg">
+            <div id="cast-fill"></div>
+        </div>
+    </div>    
 
     <!-- MOVA O TOOLTIP PARA CÁ (Fora de tudo, direto no body) -->
     <div id="item-tooltip" style="display:none;"></div>

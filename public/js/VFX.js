@@ -502,80 +502,136 @@ export const ProjectileManager = {
 
     loadAsset: (loader) => {
         loader.load('assets/arrow.glb', (gltf) => {
-            // 1. Cria um "Pai" vazio para corrigir a rotação
             const wrapper = new THREE.Group();
             const model = gltf.scene;
-
-            // 2. Ajusta a Escala para o tamanho real (estava 10.0, agora 0.8)
             model.scale.set(1.1, 1.1, 1.1); 
-            
-            // 3. CORREÇÃO DE ROTAÇÃO:
-            // Se a flecha aponta para baixo, giramos ela 90 graus no eixo X
-            // Tente Math.PI / 2. Se ficar apontando para trás, mude para -Math.PI / 2
-            model.rotation.x = -Math.PI / 2; 
-
-            // Adiciona o modelo ao wrapper
+            model.rotation.x = -Math.PI / 2; // Ajuste para a flecha ficar reta
             wrapper.add(model);
-
-            // O template agora é o Wrapper (que tem a rotação interna corrigida)
             arrowTemplate = wrapper;
-            
-            console.log(">> ARROW.GLB Carregado e corrigido!");
-        }, undefined, (error) => {
-            console.error("ERRO ao carregar arrow.glb:", error);
+            console.log("Assets de flecha carregados.");
         });
     },
 
-    spawn: (scene, startObj, targetObj) => {
-        if (!arrowTemplate || !startObj || !targetObj) return;
+    spawn: (scene, startObj, targetObj, type) => {
+        // Se não tiver template (ainda carregando) ou objetos inválidos, sai
+        if (!startObj || !targetObj) return;
 
-        const arrow = arrowTemplate.clone();
-        arrow.position.copy(startObj.position);
-        arrow.position.y += 1.2; 
+        const projectileType = type || 'ARROW'; // Fallback para flecha
+        let projectile;
 
-        // Salva a posição inicial do alvo
+        if (projectileType === 'FIREBALL') {
+            // Cria esfera laranja para bola de fogo
+            const geo = new THREE.SphereGeometry(0.3, 8, 8);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xff4400 });
+            projectile = new THREE.Mesh(geo, mat);
+        } else {
+            // Flecha Padrão
+            if (!arrowTemplate) return; 
+            projectile = arrowTemplate.clone();
+        }
+
+        // Posição inicial
+        projectile.position.copy(startObj.position);
+        projectile.position.y += 1.2; 
+
+        // Salva posição inicial do alvo para caso ele morra
         const initialTargetPos = targetObj.position.clone();
         initialTargetPos.y += 1.0;
 
-        arrow.userData = {
-            target: targetObj,       // Referência ao objeto (se vivo)
-            lastPos: initialTargetPos, // Última posição válida (caso morra)
-            speed: 18.0
+        // Velocidade diferente por tipo
+        const speed = (projectileType === 'FIREBALL') ? 12.0 : 20.0;
+
+        projectile.userData = {
+            target: targetObj,       
+            lastPos: initialTargetPos, 
+            speed: speed
         };
 
-        scene.add(arrow);
-        ProjectileManager.projectiles.push(arrow);
+        scene.add(projectile);
+        ProjectileManager.projectiles.push(projectile);
     },
 
     update: (delta, scene) => {
         for (let i = ProjectileManager.projectiles.length - 1; i >= 0; i--) {
-            const arrow = ProjectileManager.projectiles[i];
-            const data = arrow.userData;
+            const proj = ProjectileManager.projectiles[i];
+            const data = proj.userData;
             let targetPos = null;
 
-            // Lógica Inteligente:
-            // 1. Se o alvo ainda existe na cena, atualizamos a posição dele.
+            // Se o alvo existe na cena
             if (data.target && data.target.parent) {
                 targetPos = data.target.position.clone();
-                targetPos.y += 1.0; // Mira no peito
-                data.lastPos.copy(targetPos); // Atualiza cache
+                targetPos.y += 1.0; 
+                data.lastPos.copy(targetPos); 
             } else {
-                // 2. Se o alvo sumiu (morreu), usamos a última posição conhecida.
-                // Assim a flecha termina o trajeto até o "cadáver" invisível.
+                // Alvo morreu, usa última posição
                 targetPos = data.lastPos;
             }
 
-            const dist = arrow.position.distanceTo(targetPos);
+            const dist = proj.position.distanceTo(targetPos);
 
             if (dist < 0.5) {
-                scene.remove(arrow);
+                scene.remove(proj);
+                // Limpeza de memória se for geometria criada na hora
+                if (proj.geometry) proj.geometry.dispose(); 
+                if (proj.material) proj.material.dispose();
+                
                 ProjectileManager.projectiles.splice(i, 1);
                 continue;
             }
 
-            const direction = new THREE.Vector3().subVectors(targetPos, arrow.position).normalize();
-            arrow.lookAt(targetPos);
-            arrow.position.add(direction.multiplyScalar(data.speed * delta));
+            const direction = new THREE.Vector3().subVectors(targetPos, proj.position).normalize();
+            
+            // LookAt funciona bem para flecha, mas para esfera é indiferente (mas não atrapalha)
+            proj.lookAt(targetPos);
+            proj.position.add(direction.multiplyScalar(data.speed * delta));
         }
+    }
+};
+
+// --- AREA CURSOR (MIRA DE CHÃO) ---
+let areaCursorMesh = null;
+
+export const AreaCursor = {
+    create: (scene) => {
+        // Cria um anel para indicar a área
+        const geometry = new THREE.RingGeometry(0.1, 1.0, 32); 
+        const material = new THREE.MeshBasicMaterial({ 
+            color: 0x00aaff, // Azul
+            transparent: true, 
+            opacity: 0.5, 
+            side: THREE.DoubleSide,
+            depthTest: false, // Desenha sempre por cima do chão
+            depthWrite: false
+        });
+        
+        areaCursorMesh = new THREE.Mesh(geometry, material);
+        areaCursorMesh.rotation.x = -Math.PI / 2; // Deitado
+        areaCursorMesh.position.set(0, 0.1, 0);   // Pouco acima do chão
+        areaCursorMesh.visible = false;
+        
+        // RenderOrder alto para aparecer sobre o terreno
+        areaCursorMesh.renderOrder = 999; 
+        
+        scene.add(areaCursorMesh);
+        return areaCursorMesh;
+    },
+
+    updatePosition: (position) => {
+        if (areaCursorMesh && position) {
+            areaCursorMesh.position.set(position.x, 0.1, position.z);
+        }
+    },
+
+    setVisible: (visible, radius = 3.0) => {
+        if (areaCursorMesh) {
+            areaCursorMesh.visible = visible;
+            // O RingGeometry base tem raio externo 1.0. 
+            // Para ter raio X, escalamos por X.
+            areaCursorMesh.scale.set(radius, radius, 1);
+        }
+    },
+    
+    isActive: () => {
+        return areaCursorMesh && areaCursorMesh.visible;
     }
 };

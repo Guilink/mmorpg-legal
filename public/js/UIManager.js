@@ -1,8 +1,6 @@
 // public/js/UIManager.js
 
-// --- 1. REFERÊNCIAS AO DOM (CACHE) ---
 export const UI = {
-    // Telas
     loginScreen: document.getElementById('login-screen'),
     loadingScreen: document.getElementById('loading-screen'),
     loadingBarFill: document.getElementById('loading-bar-fill'),
@@ -12,8 +10,6 @@ export const UI = {
     debugPanel: document.getElementById('debug-panel'),
     chatContainer: document.getElementById('chat-container'),
     canvasContainer: document.getElementById('canvas-container'),
-    
-    // Auth Forms
     formLogin: document.getElementById('form-login'),
     formRegister: document.getElementById('form-register'),
     inLoginUser: document.getElementById('login-user'),
@@ -23,23 +19,17 @@ export const UI = {
     inRegPass2: document.getElementById('reg-pass2'),
     errorLogin: document.getElementById('login-error'),
     errorReg: document.getElementById('reg-error'),
-
-    // HUD Stats
     lvlText: document.getElementById('lvl-text'),
     xpBar: document.getElementById('xp-bar'),
     hpText: document.getElementById('hp-text'),
     hpBar: document.getElementById('hp-bar'),
     mpText: document.getElementById('mp-text'),
     mpBar: document.getElementById('mp-bar'),
-
-    // Debug
     dbgFps: document.getElementById('dbg-fps'),
     dbgMap: document.getElementById('dbg-map'),
     dbgPos: document.getElementById('dbg-pos'),
     dbgPlayers: document.getElementById('dbg-players'),
     mapName: document.getElementById('map-name'),
-
-    // Janela Status
     statusWindow: document.getElementById('status-window'),
     valStr: document.getElementById('val-str'),
     valAgi: document.getElementById('val-agi'),
@@ -51,8 +41,6 @@ export const UI = {
     dMatk: document.getElementById('d-matk'),
     dEva: document.getElementById('d-eva'),
     dSpd: document.getElementById('d-spd'),
-
-    // Janela Inventário
     inventoryWindow: document.getElementById('inventory-window'),
     eqWeapon: document.getElementById('eq-weapon'),
     eqArmor: document.getElementById('eq-armor'),
@@ -61,34 +49,30 @@ export const UI = {
     eqAccessory: document.getElementById('eq-accessory'),
     bagGrid: document.getElementById('bag-grid'),
     tooltip: document.getElementById('item-tooltip'),
-
-    // Chat
+    skillsWindow: document.getElementById('skills-window'),
+    // Adicionei referência para a lista de skills
+    skillsList: document.getElementById('skills-list'), 
     chatInput: document.getElementById('chat-input'),
     chatHistory: document.getElementById('chat-history'),
-
-    // Hotkeys
     hotbarSlots: document.querySelectorAll('.hotkey-slot'),
 };
 
-// --- 2. VARIÁVEIS LOCAIS ---
 let tempAttributes = {};
 let tempPoints = 0;
 let realAttributesRef = {};
 let equipmentBonuses = { atk: 0, def: 0, matk: 0, eva: 0 };
 let hotbarState = [null, null, null, null, null, null];
 
-// Variáveis de Controle do Arraste de Itens
 let dragData = {
-    index: -1,
-    item: null,
-    isDragging: false,
-    ghostEl: null,
-    startX: 0,
-    startY: 0
+    index: -1, 
+    item: null, // Pode ser Item (obj) ou Skill (obj)
+    type: null, // 'ITEM' ou 'SKILL'
+    isDragging: false, 
+    ghostEl: null, 
+    startX: 0, startY: 0
 };
 
-// --- 3. FUNÇÕES GERAIS DE UI ---
-
+// --- FUNÇÕES GERAIS ---
 export function toggleForms() {
     const isLogin = UI.formLogin.style.display !== 'none';
     UI.formLogin.style.display = isLogin ? 'none' : 'block';
@@ -110,19 +94,13 @@ export function showGameInterface() {
 }
 
 export function updateHUD(stats, level, xp, nextXp) {
-    const hp = stats.hp || 0;
-    const maxHp = stats.maxHp || 100;
-    const mp = stats.mp || 0;
-    const maxMp = stats.maxMp || 50;
-
+    const hp = stats.hp || 0; const maxHp = stats.maxHp || 100;
+    const mp = stats.mp || 0; const maxMp = stats.maxMp || 50;
     if(UI.lvlText) UI.lvlText.textContent = level;
-    
     const xpPercent = nextXp > 0 ? (xp / nextXp) * 100 : 0;
     if(UI.xpBar) UI.xpBar.style.width = Math.min(100, Math.max(0, xpPercent)) + '%';
-
     if(UI.hpText) UI.hpText.textContent = `${Math.ceil(hp)}/${maxHp}`;
     if(UI.hpBar) UI.hpBar.style.width = ((hp / maxHp) * 100) + '%';
-
     if(UI.mpText) UI.mpText.textContent = `${mp}/${maxMp}`;
     if(UI.mpBar) UI.mpBar.style.width = ((mp / maxMp) * 100) + '%';
 }
@@ -140,11 +118,7 @@ export function addLogMessage(user, msg, type) {
 }
 
 export function toggleChatFocus(isActive) {
-    if(isActive) {
-        UI.chatContainer.style.opacity = 1; 
-    } else {
-        UI.chatContainer.style.opacity = 0.5;
-    }
+    UI.chatContainer.style.opacity = isActive ? 1 : 0.5;
 }
 
 export function updateLoadingBar(percent) {
@@ -152,19 +126,15 @@ export function updateLoadingBar(percent) {
     if (UI.loadingPercent) UI.loadingPercent.textContent = Math.floor(percent) + '%';
 }
 
-// --- 4. LÓGICA DA JANELA DE STATUS ---
-
+// --- STATUS ---
 export function setupStatusWindowData(currentAttributes, currentPoints, currentRealStats) {
     tempAttributes = { ...currentAttributes };
     realAttributesRef = { ...currentAttributes };
     tempPoints = currentPoints;
-
-    // Cálculo Reverso de Bônus de Equipamento
     const baseAtk = 10 + (currentAttributes.str * 2);
     const baseDef = Math.floor(currentAttributes.vit * 1);
     const baseMatk = Math.floor(currentAttributes.int * 2);
     const baseEva = Math.floor((currentAttributes.str * 0.1) + (currentAttributes.agi * 0.5));
-
     equipmentBonuses.atk = (currentRealStats.atk || baseAtk) - baseAtk;
     equipmentBonuses.def = (currentRealStats.def || baseDef) - baseDef;
     equipmentBonuses.matk = (currentRealStats.matk || baseMatk) - baseMatk;
@@ -172,12 +142,8 @@ export function setupStatusWindowData(currentAttributes, currentPoints, currentR
 }
 
 export function toggleStatusWindow() {
-    if (UI.statusWindow.style.display === 'none') {
-        UI.statusWindow.style.display = 'block';
-        refreshStatusWindow();
-    } else {
-        UI.statusWindow.style.display = 'none';
-    }
+    UI.statusWindow.style.display = (UI.statusWindow.style.display === 'none') ? 'block' : 'none';
+    if(UI.statusWindow.style.display === 'block') refreshStatusWindow();
 }
 
 export function refreshStatusWindow() {
@@ -186,218 +152,287 @@ export function refreshStatusWindow() {
     UI.valInt.textContent = tempAttributes.int;
     UI.valVit.textContent = tempAttributes.vit;
     UI.stPoints.textContent = tempPoints;
-
-    // Base + Bônus
     const newBaseAtk = 10 + (tempAttributes.str * 2);
     UI.dAtk.textContent = newBaseAtk + equipmentBonuses.atk;
-
     const newBaseDef = Math.floor(tempAttributes.vit * 1);
     UI.dDef.textContent = newBaseDef + equipmentBonuses.def;
-
     const newBaseMatk = Math.floor(tempAttributes.int * 2);
     UI.dMatk.textContent = newBaseMatk + equipmentBonuses.matk;
-
     const newBaseEva = Math.floor((tempAttributes.str * 0.1) + (tempAttributes.agi * 0.5));
     UI.dEva.textContent = newBaseEva + equipmentBonuses.eva;
-
     const aspd = Math.max(500, 2000 - (tempAttributes.agi * 20));
     UI.dSpd.textContent = aspd + 'ms';
 }
 
 export function changeAttr(type, amount) {
     if (amount > 0) {
-        if (tempPoints > 0) { 
-            tempAttributes[type]++; 
-            tempPoints--; 
-        }
+        if (tempPoints > 0) { tempAttributes[type]++; tempPoints--; }
     } else {
-        if (tempAttributes[type] > realAttributesRef[type]) { 
-            tempAttributes[type]--; 
-            tempPoints++; 
-        }
+        if (tempAttributes[type] > realAttributesRef[type]) { tempAttributes[type]--; tempPoints++; }
     }
     refreshStatusWindow();
 }
 
-export function getTempAttributes() {
-    return tempAttributes;
+export function getTempAttributes() { return tempAttributes; }
+
+export function toggleInventory() {
+    const el = UI.inventoryWindow;
+    const tooltip = document.getElementById('item-tooltip');
+    if (el.style.display === 'none') {
+        el.style.display = 'block';
+    } else {
+        el.style.display = 'none';
+        if (tooltip) tooltip.style.display = 'none';
+    }
 }
 
-// --- 5. LÓGICA DE INVENTÁRIO (DRAG & DROP FLUIDO) ---
+export function toggleSkills() {
+    const el = UI.skillsWindow;
+    el.style.display = (el.style.display === 'none') ? 'block' : 'none';
+}
 
-UI.updateInventory = function(inventory, equipment, db) {
-    // Esconde tooltip antigo para evitar bugs visuais
+// --- POPULAÇÃO DE DADOS (INVENTÁRIO E SKILLS) ---
+
+UI.updateInventory = function(inventory, equipment, itemDB, skillDB) {
     hideTooltip();
-
-    // A. Renderiza Equipamentos
+    
+    // 1. Equipamentos
     const renderEquip = (slotName, el) => {
         const id = equipment[slotName];
         el.innerHTML = '';
-        if (id && db[id]) {
-            const item = db[id];
+        if (id && itemDB[id]) {
+            const item = itemDB[id];
             el.innerHTML = `<img src="assets/icons/${item.icon}">`;
             el.onmouseenter = (e) => showTooltip(e, item);
             el.onmouseleave = hideTooltip;
-        } else {
-            el.onmouseenter = null; 
-            el.onmouseleave = null;
-        }
+        } else { el.onmouseenter = null; el.onmouseleave = null; }
     };
-
     renderEquip('weapon', UI.eqWeapon);
     renderEquip('armor', UI.eqArmor);
     renderEquip('head', UI.eqHead);
     renderEquip('legs', UI.eqLegs);
     renderEquip('accessory', UI.eqAccessory);
 
-    // B. Renderiza Mochila
+    // 2. Mochila (Itens)
     UI.bagGrid.innerHTML = '';
-    
     inventory.forEach((slot, index) => {
         const div = document.createElement('div');
         div.className = 'item-slot';
-        
-        if (slot && db[slot.id]) {
-            const item = db[slot.id];
+        if (slot && itemDB[slot.id]) {
+            const item = itemDB[slot.id];
             div.innerHTML = `<img src="assets/icons/${item.icon}">`;
-            if (slot.qtd > 1) {
-                div.innerHTML += `<div class="item-qtd">${slot.qtd}</div>`;
-            }
+            if (slot.qtd > 1) div.innerHTML += `<div class="item-qtd">${slot.qtd}</div>`;
             
-            // --- EVENTOS DO SLOT ---
-            
-            // 1. Tooltip (Só mostra se não estiver arrastando)
-            div.onmouseenter = (e) => {
-                if(!dragData.isDragging) showTooltip(e, item);
-            };
+            div.onmouseenter = (e) => { if(!dragData.isDragging) showTooltip(e, item); };
             div.onmouseleave = hideTooltip;
-
-            // 2. Início do Clique (Prepara o arraste)
+            
             div.onmousedown = (e) => {
-                if(e.button !== 0) return; // Só botão esquerdo
-                e.preventDefault(); // Impede seleção nativa
-
-                dragData.index = index;
+                if(e.button !== 0) return;
+                e.preventDefault();
+                dragData.index = index; 
                 dragData.item = { ...item, qtd: slot.qtd }; 
-                dragData.startX = e.clientX;
-                dragData.startY = e.clientY;
-                dragData.isDragging = false; // Ainda não começou a mover
-
+                dragData.type = 'ITEM'; 
+                dragData.startX = e.clientX; dragData.startY = e.clientY;
+                dragData.isDragging = false;
                 document.addEventListener('mousemove', onDragMove);
             };
         }
-
         UI.bagGrid.appendChild(div);
     });
-};
 
-// --- LISTENER DE DROP ATUALIZADO ---
+    // 3. Skills (Lista) - AQUI ESTÁ A CORREÇÃO
+    // Verifica se skillDB existe e se a UI existe
+    if (skillDB && UI.skillsList) {
+        UI.skillsList.innerHTML = ''; // Limpa antes de desenhar
+        
+        Object.values(skillDB).forEach(skill => {
+            const div = document.createElement('div');
+            div.className = 'skill-item';
+            
+            // Usa o ícone do config ou um default se falhar
+            const iconSrc = skill.icon || 'default.png';
+            
+            div.innerHTML = `
+                <div class="skill-icon" style="cursor: grab;">
+                    <img src="assets/icons/${iconSrc}" style="width:32px; height:32px; pointer-events: none;">
+                </div>
+                <div class="skill-info">
+                    <div class="skill-name">${skill.name}</div>
+                    <div class="skill-desc">MP: ${skill.manaCost} | CD: ${skill.cooldown/1000}s</div>
+                </div>
+            `;
+            
+            // Pega o elemento do ícone que acabamos de criar
+            const iconDiv = div.querySelector('.skill-icon');
+            
+            // Adiciona o evento de ARRASTAR
+            iconDiv.onmousedown = (e) => {
+                if(e.button !== 0) return;
+                e.preventDefault();
+                dragData.index = -1; 
+                dragData.item = skill; // O objeto da skill
+                dragData.type = 'SKILL'; // Tipo skill
+                dragData.startX = e.clientX; dragData.startY = e.clientY;
+                dragData.isDragging = false;
+                document.addEventListener('mousemove', onDragMove);
+            };
+
+            UI.skillsList.appendChild(div);
+        });
+    } else {
+        console.log("Aviso: SkillDB vazio ou elemento UI não encontrado");
+    }
+};
+// --- DRAG & DROP LOGIC (Global) ---
 document.addEventListener('mouseup', (e) => {
-    // 1. Botão Direito (Remover) - MANTENHA IGUAL AO ANTERIOR
+    // 1. Botão Direito na Hotbar (Limpar Slot)
     if (e.button === 2) {
         const slot = e.target.closest('.hotkey-slot');
         if (slot) {
             const key = parseInt(slot.dataset.key) - 1;
-            hotbarState[key] = null;
-            const contentDiv = slot.querySelector('.hotkey-content');
-            contentDiv.innerHTML = '';
-            const qtdDiv = slot.querySelector('.hotkey-qtd');
-            if (qtdDiv) qtdDiv.textContent = ''; 
-            slot.style.opacity = '1';
+            hotbarState[key] = null; // Limpa estado
+            renderHotbarStateOnly(); // Redesenha
         }
         return;
     }
 
-    // 2. Lógica de Botão Esquerdo
-    // Se estava arrastando algo (Drop) - MANTENHA IGUAL
+    // 2. Soltou o Drag (Botão Esquerdo)
     if (dragData.isDragging) {
         stopItemDrag(); 
+        
+        // Verifica se soltou na Hotbar
         const hotbarSlot = e.target.closest('.hotkey-slot');
         if (hotbarSlot) {
             const key = parseInt(hotbarSlot.dataset.key) - 1;
-            hotbarState[key] = dragData.item.id;
-            const contentDiv = hotbarSlot.querySelector('.hotkey-content');
-            contentDiv.innerHTML = `<img src="assets/icons/${dragData.item.icon}">`;
-            const qtdDiv = hotbarSlot.querySelector('.hotkey-qtd');
-            if (qtdDiv) qtdDiv.textContent = (dragData.item.qtd > 1) ? dragData.item.qtd : '';
-            hotbarSlot.style.opacity = '1';
-            dragData.index = -1; dragData.item = null; dragData.isDragging = false;
-            return;
+            
+            // Salva no estado baseado no tipo
+            if (dragData.type === 'ITEM') {
+                hotbarState[key] = { type: 'ITEM', id: dragData.item.id };
+            } else if (dragData.type === 'SKILL') {
+                hotbarState[key] = { type: 'SKILL', id: dragData.item.id };
+            }
+            
+            renderHotbarStateOnly(); // Atualiza visual
         }
-
-        const rect = UI.inventoryWindow.getBoundingClientRect();
-        const isInside = (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom);
-
-        if (!isInside && UI.inventoryWindow.style.display !== 'none') {
-            openDropModal(dragData.index, dragData.item);
+        else if (dragData.type === 'ITEM') {
+            // Se soltou fora (chão) e for ITEM
+            const rect = UI.inventoryWindow.getBoundingClientRect();
+            const isInside = (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom);
+            if (!isInside && UI.inventoryWindow.style.display !== 'none') {
+                openDropModal(dragData.index, dragData.item);
+            }
         }
-
     } else {
-        // --- AQUI ESTÁ A MUDANÇA PARA O CLIQUE SIMPLES ---
-        
-        // Caso A: Clicou em um item no Inventário (Usar/Equipar)
-        if (dragData.index !== -1 && window.useItem) {
-            window.useItem(dragData.index);
+        // Clique simples (sem arrastar)
+        if (dragData.type === 'ITEM' && dragData.index !== -1 && window.useItem) {
+             window.useItem(dragData.index);
         }
         
-        // Caso B: Clicou na Hotbar (NOVO)
+        // Clique na Hotbar para usar
         const hotbarSlot = e.target.closest('.hotkey-slot');
         if (hotbarSlot) {
             const key = parseInt(hotbarSlot.dataset.key) - 1;
-            // Chama a função que criamos no game.js
             if (window.triggerHotkey) window.triggerHotkey(key);
         }
     }
-
+    
+    // Limpeza
     document.removeEventListener('mousemove', onDragMove);
-    dragData.index = -1;
-    dragData.item = null;
-    dragData.isDragging = false;
+    dragData.index = -1; dragData.item = null; dragData.isDragging = false; dragData.type = null;
 });
 
-// Função isolada para ser adicionada/removida dinamicamente
 function onDragMove(e) {
     if (dragData.item === null) return;
-
     if (!dragData.isDragging) {
         const dx = Math.abs(e.clientX - dragData.startX);
         const dy = Math.abs(e.clientY - dragData.startY);
         if (dx > 5 || dy > 5) startItemDrag(e);
     }
-
     if (dragData.isDragging && dragData.ghostEl) {
         dragData.ghostEl.style.left = (e.clientX - 20) + 'px';
         dragData.ghostEl.style.top = (e.clientY - 20) + 'px';
     }
 }
 
-// Funções Auxiliares do Fantasma de Item
 function startItemDrag(e) {
     dragData.isDragging = true;
-    hideTooltip(); // Esconde tooltip para não atrapalhar
-
-    // Cria o elemento visual
+    hideTooltip();
     const ghost = document.createElement('div');
     ghost.className = 'drag-ghost';
-    ghost.innerHTML = `<img src="assets/icons/${dragData.item.icon}">`;
+    // Pega o ícone correto
+    const iconSrc = dragData.item.icon || 'default.png';
+    ghost.innerHTML = `<img src="assets/icons/${iconSrc}">`;
     document.body.appendChild(ghost);
-    
     dragData.ghostEl = ghost;
-    
-    // Posiciona inicialmente
     ghost.style.left = (e.clientX - 20) + 'px';
     ghost.style.top = (e.clientY - 20) + 'px';
 }
 
 function stopItemDrag() {
-    if (dragData.ghostEl) {
-        dragData.ghostEl.remove();
-        dragData.ghostEl = null;
-    }
+    if (dragData.ghostEl) { dragData.ghostEl.remove(); dragData.ghostEl = null; }
 }
 
-// --- 6. FUNÇÕES DE TOOLTIP ---
+// --- RENDERIZAÇÃO DA HOTBAR ---
+// Precisamos guardar o DB globalmente aqui no UI para renderizar a hotbar a qualquer momento
+let globalItemDB = {};
+let globalSkillDB = {};
 
+export function renderHotbar(inventory, itemDB, skillDB) {
+    if (itemDB) globalItemDB = itemDB;
+    if (skillDB) globalSkillDB = skillDB;
+    
+    // Atualiza quantidades (se for item)
+    // Se for skill, só mantém o ícone
+    renderHotbarStateOnly(inventory);
+}
+
+function renderHotbarStateOnly(inventory) {
+    const slots = document.querySelectorAll('.hotkey-slot');
+    
+    hotbarState.forEach((slotData, index) => {
+        const slotDiv = slots[index];
+
+        let overlay = slotDiv.querySelector('.cd-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'cd-overlay';
+            slotDiv.appendChild(overlay);
+        }
+
+        const contentDiv = slotDiv.querySelector('.hotkey-content');
+        const qtdDiv = slotDiv.querySelector('.hotkey-qtd');   
+        
+        contentDiv.innerHTML = ''; 
+        qtdDiv.textContent = ''; 
+        slotDiv.style.opacity = '1';
+
+        if (slotData) {
+            if (slotData.type === 'ITEM') {
+                const item = globalItemDB[slotData.id];
+                if (item) {
+                    contentDiv.innerHTML = `<img src="assets/icons/${item.icon}">`;
+                    // Checa qtd na mochila
+                    if (inventory) {
+                        const itemInBag = inventory.find(i => i.id === slotData.id);
+                        if (itemInBag && itemInBag.qtd >= 1) qtdDiv.textContent = itemInBag.qtd;
+                        else slotDiv.style.opacity = '0.5';
+                    }
+                }
+            } else if (slotData.type === 'SKILL') {
+                const skill = globalSkillDB[slotData.id];
+                if (skill) {
+                    contentDiv.innerHTML = `<img src="assets/icons/${skill.icon}">`;
+                    // Skill não tem quantidade, sempre opacidade 1 (a menos que queiramos mostrar CD no futuro)
+                }
+            }
+        }
+    });
+}
+
+// Retorna o objeto { type, id } para o game.js usar
+export function getHotkeyItem(slotIndex) { return hotbarState[slotIndex]; }
+
+// ... (Tooltip, Modal e Draggable code mantidos iguais) ...
 function showTooltip(e, item) {
     const tt = UI.tooltip;
     let statsHtml = '';
@@ -414,155 +449,80 @@ function showTooltip(e, item) {
          if(item.effect.hp) statsHtml += `<span class="stat" style="color:#f55">Recupera: ${item.effect.hp} HP</span>`;
          if(item.effect.mp) statsHtml += `<span class="stat" style="color:#55f">Recupera: ${item.effect.mp} MP</span>`;
     }
-
-    tt.innerHTML = `
-        <h3 style="color:${item.type === 'equipment' ? '#ffd700' : '#fff'}">${item.name}</h3>
-        <div class="desc">${item.description}</div>
-        <hr style="border-color:#444; margin:5px 0;">
-        ${statsHtml}
-    `;
-
+    tt.innerHTML = `<h3 style="color:${item.type === 'equipment' ? '#ffd700' : '#fff'}">${item.name}</h3><div class="desc">${item.description}</div><hr style="border-color:#444; margin:5px 0;">${statsHtml}`;
     tt.style.display = 'block';
-
-    const width = tt.offsetWidth;
-    const height = tt.offsetHeight;
-    let finalX = e.clientX + 15;
-    let finalY = e.clientY + 15;
-
+    const width = tt.offsetWidth; const height = tt.offsetHeight;
+    let finalX = e.clientX + 15; let finalY = e.clientY + 15;
     if (finalX + width > window.innerWidth) finalX = e.clientX - width - 10;
     if (finalY + height > window.innerHeight) finalY = e.clientY - height - 10;
-
-    tt.style.left = finalX + 'px';
-    tt.style.top = finalY + 'px';
+    tt.style.left = finalX + 'px'; tt.style.top = finalY + 'px';
 }
-
-function hideTooltip() {
-    UI.tooltip.style.display = 'none';
-}
-
-// --- 7. MODAL DROP ---
-
+function hideTooltip() { UI.tooltip.style.display = 'none'; }
 let pendingDropIndex = -1;
-
 function openDropModal(index, item) {
     pendingDropIndex = index;
     const modal = document.getElementById('drop-modal');
     const nameEl = document.getElementById('drop-item-name');
     const qtdCont = document.getElementById('drop-qtd-container');
     const input = document.getElementById('drop-qtd-input');
-    
     modal.style.display = 'flex';
     nameEl.textContent = item.name;
-    
-    // --- LÓGICA DE QUANTIDADE ---
-    if (item.qtd > 1) {
-        qtdCont.style.display = 'block'; // Mostra o campo
-        input.max = item.qtd;            // Trava o máximo
-        input.value = 1;                 // Reseta pra 1
-        
-        // Dica visual: Coloca o foco no input pra digitar rápido
-        setTimeout(() => input.focus(), 50); 
-    } else {
-        qtdCont.style.display = 'none';  // Esconde se for só 1
-        input.value = 1;
-    }
+    if (item.qtd > 1) { qtdCont.style.display = 'block'; input.max = item.qtd; input.value = 1; setTimeout(() => input.focus(), 50); } 
+    else { qtdCont.style.display = 'none'; input.value = 1; }
 }
-
-window.closeDropModal = () => {
-    document.getElementById('drop-modal').style.display = 'none';
-};
-
+window.closeDropModal = () => { document.getElementById('drop-modal').style.display = 'none'; };
 window.confirmDrop = () => {
     const input = document.getElementById('drop-qtd-input');
     let qtd = parseInt(input.value);
     if(qtd < 1) qtd = 1;
-    
     if(window.requestDrop) window.requestDrop(pendingDropIndex, qtd);
     closeDropModal();
 };
-
-// --- 8. SISTEMA DE ARRASTAR JANELAS (DRAG DE JANELA) ---
-
 function makeDraggable(elementId) {
     const el = document.getElementById(elementId);
+    if(!el) return;
     const header = el.querySelector('.win-header');
-    
     let isDragging = false;
     let startX, startY, initialLeft, initialTop;
-
     header.onmousedown = function(e) {
         e.preventDefault();
         el.style.zIndex = parseInt(window.getComputedStyle(el).zIndex) + 2;
         isDragging = true;
-        startX = e.clientX;
-        startY = e.clientY;
+        startX = e.clientX; startY = e.clientY;
         const rect = el.getBoundingClientRect();
-        if (el.style.transform !== 'none') {
-            el.style.left = rect.left + 'px';
-            el.style.top = rect.top + 'px';
-            el.style.transform = 'none';
-            el.style.margin = 0;
-        }
-        initialLeft = el.offsetLeft;
-        initialTop = el.offsetTop;
-        document.onmousemove = onMouseMove;
-        document.onmouseup = onMouseUp;
+        if (el.style.transform !== 'none') { el.style.left = rect.left + 'px'; el.style.top = rect.top + 'px'; el.style.transform = 'none'; el.style.margin = 0; }
+        initialLeft = el.offsetLeft; initialTop = el.offsetTop;
+        document.onmousemove = onMouseMove; document.onmouseup = onMouseUp;
     };
-
-    function onMouseMove(e) {
-        if (!isDragging) return;
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-        el.style.left = (initialLeft + dx) + 'px';
-        el.style.top = (initialTop + dy) + 'px';
-    }
-
-    function onMouseUp() {
-        isDragging = false;
-        document.onmousemove = null;
-        document.onmouseup = null;
-    }
+    function onMouseMove(e) { if (!isDragging) return; const dx = e.clientX - startX; const dy = e.clientY - startY; el.style.left = (initialLeft + dx) + 'px'; el.style.top = (initialTop + dy) + 'px'; }
+    function onMouseUp() { isDragging = false; document.onmousemove = null; document.onmouseup = null; }
 }
 
-// Renderiza os ícones na barra baseado no hotbarState
-export function renderHotbar(inventory, itemDB) {
+// --- COOLDOWN VISUAL OTIMIZADO ---
+export function startCooldownUI(skillId, duration) {
     const slots = document.querySelectorAll('.hotkey-slot');
     
-    hotbarState.forEach((itemId, index) => {
-        const slotDiv = slots[index];
-        const contentDiv = slotDiv.querySelector('.hotkey-content');
-        const qtdDiv = slotDiv.querySelector('.hotkey-qtd');
-        
-        // Limpa tudo antes
-        contentDiv.innerHTML = '';
-        qtdDiv.textContent = '';
-        slotDiv.style.opacity = '1'; // Reseta opacidade
+    // Varre os slots para ver onde essa skill está equipada
+    for (let i = 0; i < 6; i++) {
+        const data = hotbarState[i];
+        if (data && data.type === 'SKILL' && data.id === skillId) {
+            const overlay = slots[i].querySelector('.cd-overlay');
+            if (overlay) {
+                // 1. Enche a barra imediatamente (sem transição)
+                overlay.style.transition = 'none';
+                overlay.style.height = '100%';
+                
+                // Força o navegador a desenhar (Reflow)
+                void overlay.offsetWidth; 
 
-        if (itemId && itemDB[itemId]) {
-            const item = itemDB[itemId];
-            contentDiv.innerHTML = `<img src="assets/icons/${item.icon}">`;
-            
-            // Procura o item no inventário para pegar a quantidade
-            const itemInBag = inventory.find(i => i.id === itemId);
-            
-            if (itemInBag) {
-                // Se achou, mostra a quantidade (se for maior que 1)
-                if (itemInBag.qtd >= 1) {
-                    qtdDiv.textContent = itemInBag.qtd;
-                }
-            } else {
-                // Se NÃO ACHOU (acabou), deixa o ícone "apagado"
-                slotDiv.style.opacity = '0.5';
+                // 2. Desce suavemente baseado no tempo da skill
+                overlay.style.transition = `height ${duration}ms linear`;
+                overlay.style.height = '0%';
             }
         }
-    });
+    }
 }
 
-// Retorna o ID do item no slot X (para o game.js usar)
-export function getHotkeyItem(slotIndex) { // slotIndex de 0 a 5
-    return hotbarState[slotIndex];
-}
-
-// INICIALIZA SISTEMAS
 makeDraggable('status-window');
 makeDraggable('inventory-window');
+makeDraggable('skills-window');

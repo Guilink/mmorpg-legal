@@ -37,18 +37,32 @@ const SKILL_DATABASE = {
     'fireball': {
         id: 'fireball', name: "Bola de Fogo", type: 'CASTING',
         castTime: 1500, cooldown: 3000, range: 15, manaCost: 10,
-        damage: 40, animation: 'ATTACK' 
+        damage: 40, animation: 'ATTACK',
+        icon: 'skill_fireball.png' // <--- NOVO (Crie essa imagem ou use outra de teste)
     },
     'strong_slash': {
         id: 'strong_slash', name: "Golpe Feroz", type: 'MELEE',
-        castTime: 0, cooldown: 5000, range: 2.5, manaCost: 5,
-        damage: 30, animation: 'ATTACK'
+        castTime: 0, cooldown: 5000, range: 1.3, manaCost: 5,
+        damage: 30, animation: 'ATTACK',
+        icon: 'skill_slash.png' // <--- NOVO
     },
     'heal': {
         id: 'heal', name: "Cura Menor", type: 'SUPPORT',
         castTime: 1000, cooldown: 4000, range: 10, manaCost: 15,
-        effect: { hp: 50 }, animation: 'IDLE' // No futuro teremos animação de cast
-    }
+        effect: { hp: 50 }, animation: 'IDLE',
+        icon: 'skill_heal.png' // <--- NOVO
+    },
+    'meteor': {
+        id: 'meteor', name: "Chuva de Meteoros", type: 'AREA',
+        castTime: 2000, // 2 segundos carregando
+        cooldown: 10000, // 10 segundos de recarga
+        range: 12.0,     // Distância máxima que posso jogar (do meu pé até o centro da área)
+        radius: 3.0,     // Tamanho da explosão (4 metros de raio)
+        manaCost: 25,
+        damage: 80,      // Dano alto
+        animation: 'ATTACK', // Animação do char jogando
+        icon: 'skill_meteor.png' // Crie essa imagem na pasta icons!
+    }    
 };
 
 // --- BANCO DE DADOS DE ITENS ---
@@ -68,20 +82,20 @@ const ITEM_DATABASE = {
     // --- EQUIPAMENTOS ---
     100: { 
         id: 100, name: "Espada de Madeira", type: ITEM_TYPES.EQUIPMENT, slot: EQUIP_SLOTS.WEAPON,
-        weaponType: WEAPON_TYPES.MELEE, range: 2.0,
+        weaponType: WEAPON_TYPES.MELEE, range: 1.0,
         icon: "sword_wood.png", description: "Uma espada simples.",
         stats: { atk: 5 } 
     },
     101: { 
         id: 101, name: "Espada de Ferro", type: ITEM_TYPES.EQUIPMENT, slot: EQUIP_SLOTS.WEAPON,
-        weaponType: WEAPON_TYPES.MELEE, range: 2.0,
+        weaponType: WEAPON_TYPES.MELEE, range: 1.3,
         icon: "sword_iron.png", description: "Lâmina afiada.",
         stats: { atk: 15, str: 2 } 
     },
     // --- NOVO ITEM: ARCO ---
     102: { 
         id: 102, name: "Arco Curto", type: ITEM_TYPES.EQUIPMENT, slot: EQUIP_SLOTS.WEAPON,
-        weaponType: WEAPON_TYPES.RANGED, range: 12.0, // Alcance maior
+        weaponType: WEAPON_TYPES.RANGED, range: 5.0, // Alcance maior
         icon: "bow_oak.png", description: "Ataque a distância.",
         stats: { atk: 8, agi: 2 } 
     },

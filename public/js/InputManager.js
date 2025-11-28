@@ -11,8 +11,8 @@ export function getIsChatActive() {
     return isChatActive;
 }
 
-// ADICIONADO: onTab no final dos argumentos
-export function setupInputs(onEnterPress, onSit, onAttack, onToggleStatus, onToggleInventory, onPickup, onHotkey, onTab) { 
+// MUDANÇA 1: Adicionei onToggleSkills no final dos argumentos
+export function setupInputs(onEnterPress, onSit, onAttack, onToggleStatus, onToggleInventory, onPickup, onHotkey, onTab, onToggleSkills) { 
     
     document.addEventListener('contextmenu', event => event.preventDefault());
 
@@ -24,51 +24,27 @@ export function setupInputs(onEnterPress, onSit, onAttack, onToggleStatus, onTog
             return;
         }
 
-        // --- ATALHOS DA HOTBAR (1 a 6) ---
+        // Atalhos Numéricos
         if (['1', '2', '3', '4', '5', '6'].includes(e.key)) {
             if (onHotkey) onHotkey(parseInt(e.key));
             return;
         } 
 
-        // --- ATALHO DE PEGAR ITEM (Q) ---
-        if (e.key.toLowerCase() === 'q') {
-            if(onPickup) onPickup();
-        }
+        // Atalhos de Ação
+        if (e.key.toLowerCase() === 'q') if(onPickup) onPickup();
+        if (e.key === 'Tab') { e.preventDefault(); if(onTab) onTab(); return; }
+        if (e.key.toLowerCase() === 'f') if(onAttack) onAttack();
+        if (e.code === 'Space') if(onSit) onSit();
+        if(e.key === 'Enter') { if(onEnterPress) onEnterPress(); return; }
 
-        // --- NOVO: ATALHO DE TAB (TARGET) ---
-        if (e.key === 'Tab') {
-            e.preventDefault(); // Impede sair do foco da janela
-            if(onTab) onTab();
-            return;
-        }
+        // Atalhos de UI
+        if (e.altKey && e.key.toLowerCase() === 'a') { e.preventDefault(); if (onToggleStatus) onToggleStatus(); return; }
+        if (e.altKey && e.key.toLowerCase() === 'e') { e.preventDefault(); if (onToggleInventory) onToggleInventory(); return; }
 
-        // --- ATALHOS DE UI ---
-        if (e.altKey && e.key.toLowerCase() === 'a') {
-            e.preventDefault();
-            if (onToggleStatus) onToggleStatus();
-            return;
-        }
-
-        if (e.altKey && e.key.toLowerCase() === 'e') {
-            e.preventDefault();
-            if (onToggleInventory) onToggleInventory();
-            return;
-        }
-
-        if(e.key === 'Enter') {
-            if(onEnterPress) onEnterPress();
-            return; 
-        }
+        // MUDANÇA 2: Tecla S para Skills (Só se não estiver no chat)
+        if (e.altKey && e.key.toLowerCase() === 'h') {e.preventDefault(); if (onToggleSkills) onToggleSkills(); return; }
         
         keys[e.key.toLowerCase()] = true;
-
-        if(e.code === 'Space') {
-            if(onSit) onSit(); 
-        }
-
-        if(e.key.toLowerCase() === 'f') {
-            if(onAttack) onAttack();
-        }
     });
 
     document.addEventListener('keyup', e => {

@@ -198,6 +198,36 @@ function handleMonsterAttack(monster, player) {
     else sendStatsUpdate(player);
 }
 
+function handleMonsterDeath(attacker, monster) {
+    const type = monster.type;
+    const mapId = monster.map;
+    const mobConfig = MONSTER_TYPES[type];
+    
+    // 1. Drops
+    if (mobConfig.drops) {
+        mobConfig.drops.forEach(drop => {
+            if (Math.random() * 100 <= drop.chance) {
+                spawnGroundItem(drop.itemId, 1, mapId, monster.position.x, monster.position.z);
+            }
+        });
+    }
+
+    // 2. Remove da lista global
+    delete monsters[monster.id];
+    
+    // 3. Avisa todos que morreu (O cliente remove o modelo aqui)
+    io.to(mapId).emit('monster_dead', monster.id);
+    
+    // 4. Recompensas
+    if (onlinePlayers[attacker.id]) {
+        attacker.stats.cash += 10; // Exemplo de gold
+        gainExperience(attacker, mobConfig.xp || 20);
+    }
+
+    // 5. Agendar Respawn
+    scheduleMonsterRespawn(type, mapId);
+}
+
 function handlePlayerDeath(player) {
     player.stats.hp = player.stats.maxHp;
     player.stats.mp = player.stats.maxMp;
@@ -374,6 +404,9 @@ io.on('connection', (socket) => {
             socket.equipment = savedData.equipment || { weapon: null, armor: null, head: null, legs: null, accessory: null };            
             socket.nextLevelXp = LEVEL_TABLE[socket.level] || 100;
             socket.stats = { ...savedData.stats };
+            socket.cooldowns = {}; // Armazena timestamp de quando a skill estará pronta
+            socket.isCasting = false;
+            socket.castTimeout = null;
 
             recalculateStats(socket);
             
@@ -397,7 +430,7 @@ io.on('connection', (socket) => {
             socket.emit('login_success', {
                 playerId: socket.id, playerData: myData, mapConfig: MAP_CONFIG[socket.map],
                 mapPlayers: mapPlayers, mapMonsters: mapMonsters, mapGroundItems: mapGroundItems,
-                monsterTypes: MONSTER_TYPES, itemDB: ITEM_DATABASE,
+                monsterTypes: MONSTER_TYPES, itemDB: ITEM_DATABASE, skillDB: SKILL_DATABASE,
                 inventory: socket.inventory, equipment: socket.equipment
             });
             socket.broadcast.to(socket.map).emit('player_joined', getPublicPlayerData(socket));
@@ -408,6 +441,17 @@ io.on('connection', (socket) => {
 
     socket.on('player_update', (data) => {
         if (!onlinePlayers[socket.id]) return;
+        // Se o jogador se moveu significativamente e está castando
+        if (onlinePlayers[socket.id].isCasting) {
+            const dist = getDistance(data.position, onlinePlayers[socket.id].position);
+            if (dist > 0.1) { // Tolerância mínima
+                clearTimeout(onlinePlayers[socket.id].castTimeout);
+                onlinePlayers[socket.id].isCasting = false;
+                io.to(socket.map).emit('cast_interrupted', socket.id);
+                socket.emit('chat_message', { username: 'SISTEMA', message: 'Conjuração cancelada!', type: 'system' });
+            }
+        }
+
         const mapConfig = MAP_CONFIG[socket.map];
         if (!mapConfig) return;
 
@@ -446,15 +490,15 @@ io.on('connection', (socket) => {
         }
     });    
 
-    // --- SISTEMA DE ATAQUE (ATUALIZADO PARA RANGED) ---
-    socket.on('attack_request', (targetId) => {
+socket.on('attack_request', (targetId) => {
         if (!onlinePlayers[socket.id]) return;
         const attacker = onlinePlayers[socket.id];
         
         let weaponId = attacker.equipment.weapon;
         let weaponData = weaponId ? ITEM_DATABASE[weaponId] : null;
         
-        let attackRange = 2.0; 
+        // --- MUDANÇA: Range padrão mais curto ---
+        let attackRange = 1.0; // 1.0m é o range padrão para ataques corpo a corpo sem arma
         let isRanged = false;
         
         if (weaponData) {
@@ -465,6 +509,7 @@ io.on('connection', (socket) => {
         let target = null;
         let isMonsterTarget = false;
 
+        // ... (lógica de achar target pelo ID continua igual) ...
         if (targetId) {
             if (monsters[targetId] && monsters[targetId].map === attacker.map && monsters[targetId].hp > 0) {
                 target = monsters[targetId];
@@ -475,14 +520,20 @@ io.on('connection', (socket) => {
             }
         }
 
+        // Auto-aim melee fallback (Servidor)
+        // Reduzimos o raio de busca automática para ficar bem colado
         if (!target && !isRanged) {
             let bestDistSq = Infinity;
-            const MELEE_AUTOAIM = 2.5 * 2.5;
+            const MELEE_AUTOAIM_RADIUS = 1.8; // Máximo 1.8m para "grudar" sozinho
+            const MELEE_AUTOAIM_SQ = MELEE_AUTOAIM_RADIUS * MELEE_AUTOAIM_RADIUS;
 
             Object.values(monsters).forEach(m => {
                 if (m.map !== attacker.map || m.hp <= 0) return;
-                const distSq = getDistance(m.position, attacker.position);
-                if (distSq * distSq <= MELEE_AUTOAIM && distSq < bestDistSq) {
+                const distSq = getDistance(m.position, attacker.position); // getDistance retorna SQRT? NÃO.
+                // ATENÇÃO: Verifique sua função getDistance no topo do server.js
+                // Se ela faz Math.sqrt, compare com MELEE_AUTOAIM_RADIUS.
+                // Assumindo que sua getDistance FAZ sqrt:
+                if (distSq <= MELEE_AUTOAIM_RADIUS && distSq < bestDistSq) { 
                     target = m; bestDistSq = distSq; isMonsterTarget = true;
                 }
             });
@@ -491,19 +542,24 @@ io.on('connection', (socket) => {
         if (target) {
             const dist = getDistance(target.position, attacker.position);
             
-            if (dist > attackRange + 1.0) return; 
-
-            if (isRanged) {
-                if (!isTargetInFront(attacker, target)) return;
+            // --- MUDANÇA: Tolerância ZERO para melee ---
+            // Se for Ranged, aceita 1m de lag. Se for Melee, aceita 0.2m.
+            const tolerance = isRanged ? 1.0 : 0.2;
+            
+            if (dist > attackRange + tolerance) {
+                 // Dica: Descomente para debugar se estiver falhando muito
+                 // console.log(`Falha Range: Dist ${dist} > Max ${attackRange + tolerance}`);
+                 return; 
             }
+            if (isRanged && !isTargetInFront(attacker, target)) return;
 
             const baseDmg = attacker.stats.atk || 10;
             const variation = (Math.random() * 0.2) + 0.9; 
             const dmg = Math.floor(baseDmg * variation);
             let currentHp = 0;
-            let realTargetId = target.id;
+            let realTargetId = target.id; // Guarda ID antes de deletar
 
-            // 1. APLICA O DANO NOS DADOS
+            // 1. Aplica Dano
             if (isMonsterTarget) {
                 currentHp = target.takeDamage(dmg, attacker.id);
             } else {
@@ -513,46 +569,25 @@ io.on('connection', (socket) => {
                 currentHp = target.stats.hp;
             }
 
-            // 2. ENVIA OS PACOTES VISUAIS AGORA (ANTES DE MATAR/REMOVER) !!!
-            // Isso garante que o cliente receba dano e flecha antes do monstro sumir
+            // 2. CRUCIAL: Envia visuais ANTES de processar morte
             io.to(attacker.map).emit('damage_dealt', {
-                targetId: realTargetId, attackerId: attacker.id, damage: Math.floor(dmg), newHp: currentHp, isMonster: isMonsterTarget
+                targetId: realTargetId, attackerId: attacker.id, damage: dmg, newHp: currentHp, isMonster: isMonsterTarget, x: target.position.x, z: target.position.z
             });
 
             if (isRanged) {
                 io.to(attacker.map).emit('projectile_fired', {
-                    shooterId: attacker.id,
-                    targetId: realTargetId,
-                    type: 'ARROW'
+                    shooterId: attacker.id, targetId: realTargetId, type: 'ARROW'
                 });
             }
 
-            // 3. AGORA VERIFICA SE MORREU E DELETA
+            // 3. Processa Morte (se houver)
             if (currentHp <= 0) {
                 if (isMonsterTarget) {
-                    const type = target.type;
-                    const mapId = target.map;
-                    const mobConfig = MONSTER_TYPES[type];
-                    
-                    if (mobConfig.drops) {
-                        mobConfig.drops.forEach(drop => {
-                            if (Math.random() * 100 <= drop.chance) {
-                                spawnGroundItem(drop.itemId, 1, mapId, target.position.x, target.position.z);
-                            }
-                        });
-                    }
-
-                    delete monsters[realTargetId];
-                    io.to(attacker.map).emit('monster_dead', realTargetId); // O cliente deleta aqui
-                    
-                    attacker.stats.cash += 10;
-                    gainExperience(attacker, mobConfig.xp || 20);
-                    scheduleMonsterRespawn(type, mapId);
+                    handleMonsterDeath(attacker, target);
                 } else {
                     handlePlayerDeath(target);
                 }
             } else {
-                // Se não morreu e for player, atualiza stats
                 if (!isMonsterTarget) sendStatsUpdate(target);
             }
         }
@@ -658,6 +693,313 @@ io.on('connection', (socket) => {
             }
         }
         if(onlinePlayers[socket.id]) io.to(socket.map).emit('chat_message', { username: socket.username, message: msg, id: socket.id });
+    });
+
+// --- SISTEMA DE SKILLS ---
+    socket.on('use_skill', (data) => {
+        const player = onlinePlayers[socket.id];
+        if (!player || player.stats.hp <= 0) return;
+
+        const skill = SKILL_DATABASE[data.skillId];
+        if (!skill) return;
+
+        // 1. Validações de Recarga e Mana
+        const now = Date.now();
+        const cdReady = player.cooldowns[data.skillId] || 0;
+        if (now < cdReady) {
+            socket.emit('chat_message', { username: 'SISTEMA', message: 'Habilidade em recarga.', type: 'system' });
+            return;
+        }
+        if (player.stats.mp < skill.manaCost) {
+            socket.emit('chat_message', { username: 'SISTEMA', message: 'Mana insuficiente.', type: 'system' });
+            return;
+        }
+
+        // 2. Resolução de Alvo (Lógica Unificada com Auto-Aim)
+        let target = null;
+
+        // A) Tenta usar o alvo enviado pelo cliente
+        if (data.targetId) {
+            if (monsters[data.targetId] && monsters[data.targetId].map === player.map && monsters[data.targetId].hp > 0) target = monsters[data.targetId];
+            else if (onlinePlayers[data.targetId] && onlinePlayers[data.targetId].map === player.map) target = onlinePlayers[data.targetId];
+        }
+
+        // B) Se não tem alvo válido e a skill NÃO é de Suporte (Support sem alvo = Self), tenta Auto-Target (igual ataque básico)
+        if (!target && skill.type !== 'SUPPORT' && skill.type !== 'AREA') {
+            let bestDistSq = Infinity;
+            // Define alcance do auto-aim baseado na skill (Melee busca perto, Ranged busca longe)
+            const AUTO_AIM_RANGE = skill.type === 'MELEE' ? 3.0 : 12.0; 
+            const AUTO_AIM_SQ = AUTO_AIM_RANGE * AUTO_AIM_RANGE;
+
+            Object.values(monsters).forEach(m => {
+                if (m.map !== player.map || m.hp <= 0) return;
+                const distSq = getDistance(m.position, player.position); // Requer Math.pow ou dx*dx
+                // Como getDistance retorna raiz, elevamos ao quadrado para comparar ou usamos direto:
+                // Nota: getDistance retorna float.
+                if (distSq * distSq <= AUTO_AIM_SQ && distSq < bestDistSq) {
+                     // Verifica angulo se for ranged
+                     if (skill.type === 'CASTING' || skill.type === 'INSTANT') {
+                         if (isTargetInFront(player, m)) {
+                             target = m; bestDistSq = distSq;
+                         }
+                     } else {
+                         // Melee pega qualquer um em volta
+                         target = m; bestDistSq = distSq;
+                     }
+                }
+            });
+        }
+
+        // C) Lógica Específica de Support (Auto-Self)
+        if (skill.type === 'SUPPORT') {
+            if (!target) {
+                target = player; // Cura a si mesmo se não tiver alvo
+            } else {
+                // Se o alvo for um monstro, muda para si mesmo (não curar monstros!)
+                if (monsters[target.id]) target = player;
+            }
+        }
+
+        // Validação Final: Precisa de alvo? (Area não precisa)
+        if (!target && skill.type !== 'AREA') {
+             socket.emit('chat_message', { username: 'SISTEMA', message: 'Nenhum alvo encontrado.', type: 'system' });
+             return;
+        }
+
+        // 3. Validações de Distância
+        if (target) {
+            const dist = getDistance(player.position, target.position);
+            // Se for self-cast (distancia 0), ignora check de range
+            if (target.id !== player.id) {
+                if (dist > skill.range + 1.5) { // Tolerância aumentada
+                    socket.emit('chat_message', { username: 'SISTEMA', message: 'Alvo fora de alcance.', type: 'system' });
+                    return;
+                }
+                
+                // Validação de Ângulo (Só para ofensivas a distância)
+                if (skill.type === 'CASTING' || (skill.type === 'INSTANT' && skill.range > 5)) {
+                    if (!isTargetInFront(player, target)) {
+                        socket.emit('chat_message', { username: 'SISTEMA', message: 'Precisa estar de frente.', type: 'system' });
+                        return;
+                    }
+                }
+            }
+        }
+
+        // --- FUNÇÃO DE EXECUÇÃO ---
+        const executeSkill = () => {
+            if (!onlinePlayers[socket.id] || onlinePlayers[socket.id].stats.hp <= 0) return;
+
+            // Consumo
+            player.stats.mp -= skill.manaCost;
+            player.cooldowns[data.skillId] = Date.now() + skill.cooldown;
+
+            // --- TIPO: CASTING (Bola de Fogo) ---
+            if (skill.type === 'CASTING' && target) {
+                 // Verifica se alvo morreu no delay
+                 let exists = monsters[target.id] || onlinePlayers[target.id];
+                 if (!exists) {
+                     socket.emit('chat_message', { username: 'SISTEMA', message: 'Alvo desapareceu.', type: 'system' });
+                     player.isCasting = false;
+                     sendStatsUpdate(player);
+                     return;
+                 }
+
+                 const magicAttack = Number(player.stats.matk || 10);
+                 let dmg = skill.damage + magicAttack; 
+                 let finalHp = 0;
+                 let isMonster = !!monsters[target.id];
+                 let realTargetId = target.id;
+
+                 if (isMonster) {
+                     finalHp = target.takeDamage(dmg, player.id);
+                 } else {
+                     // PVP Dano
+                     let currentHp = Number(target.stats.hp);
+                     target.stats.hp = Math.max(0, currentHp - dmg);
+                     finalHp = target.stats.hp;
+                 }
+
+                 io.to(player.map).emit('damage_dealt', {
+                    targetId: realTargetId, attackerId: player.id, damage: dmg, newHp: finalHp, isMonster: isMonster,
+                    x: parseFloat(target.position.x), z: parseFloat(target.position.z)
+                 });
+                 
+                 let projType = (data.skillId === 'fireball') ? 'FIREBALL' : 'ARROW';
+                 io.to(player.map).emit('projectile_fired', {
+                    shooterId: player.id, targetId: realTargetId, type: projType
+                 });
+
+                 if (finalHp <= 0) {
+                     if (isMonster) handleMonsterDeath(player, target);
+                     else handlePlayerDeath(target);
+                 } else {
+                     if (!isMonster) sendStatsUpdate(target);
+                 }
+            }
+
+            // --- TIPO: MELEE (Golpe Feroz) ---
+            else if (skill.type === 'MELEE' && target) {
+                // Animação
+                socket.broadcast.to(player.map).emit('player_update', { 
+                    id: player.id, position: player.position, rotation: player.rotation, animation: 'ATTACK' 
+                });
+                
+                let physDmg = skill.damage + Number(player.stats.atk || 10);
+                let finalHp = 0;
+                let isMonster = !!monsters[target.id];
+                
+                if (isMonster) {
+                    finalHp = target.takeDamage(physDmg, player.id);
+                } else {
+                    let def = Number(target.stats.def || 0);
+                    let currentHp = Number(target.stats.hp);
+                    let finalDmg = Math.max(1, physDmg - (def * 0.5));
+                    target.stats.hp = Math.max(0, currentHp - finalDmg);
+                    finalHp = target.stats.hp;
+                }
+
+                io.to(player.map).emit('damage_dealt', {
+                    targetId: target.id, attackerId: player.id, damage: Math.floor(physDmg), newHp: finalHp, isMonster: isMonster,
+                    x: parseFloat(target.position.x), z: parseFloat(target.position.z)
+                });
+
+                if (finalHp <= 0) {
+                    if (isMonster) handleMonsterDeath(player, target);
+                    else handlePlayerDeath(target);
+                } else {
+                    if (!isMonster) sendStatsUpdate(target);
+                }
+            }
+
+            // --- TIPO: SUPPORT (Cura) ---
+            else if (skill.type === 'SUPPORT' && target) {
+                // CORREÇÃO MATEMÁTICA E LÓGICA
+                if (skill.effect && skill.effect.hp) {
+                    // Garante números
+                    let healBase = Number(skill.effect.hp);
+                    let bonusInt = Number(player.stats.int || 0) * 3;
+                    let healAmount = healBase + bonusInt;
+                    
+                    let currentHp = Number(target.stats.hp);
+                    let maxHp = Number(target.stats.maxHp);
+                    
+                    // Aplica cura
+                    let newHp = currentHp + healAmount;
+                    if (newHp > maxHp) newHp = maxHp;
+                    
+                    target.stats.hp = newHp;
+                    
+                    // Visual
+                    io.to(player.map).emit('play_vfx', { targetId: target.id, type: 'POTION_HP' });
+
+                    // Log para quem curou
+                    socket.emit('chat_message', { 
+                        username: 'SISTEMA', 
+                        message: `Curou ${healAmount} HP de ${target.username || 'Monstro(?!)'}.`, 
+                        type: 'system' 
+                    });
+
+                    // Atualiza o alvo (se for player)
+                    if (onlinePlayers[target.id]) {
+                        sendStatsUpdate(target);
+                        if (target.id !== player.id) {
+                            // Avisa o alvo que foi curado
+                            target.emit('chat_message', { 
+                                username: 'SISTEMA', 
+                                message: `${player.username} curou você.`, 
+                                type: 'system' 
+                            });
+                        }
+                    }
+                }
+            }
+            // --- TIPO: AREA (Meteoro) ---
+            else if (skill.type === 'AREA') {
+                // Validações
+                if (data.x === undefined || data.z === undefined) return;
+                
+                const targetPos = { x: data.x, z: data.z };
+                
+                // Valida Distância do Cast (Eu posso jogar o meteoro tão longe?)
+                const distToCenter = getDistance(player.position, targetPos);
+                if (distToCenter > skill.range + 2.0) {
+                    socket.emit('chat_message', { username: 'SISTEMA', message: 'Área muito distante.', type: 'system' });
+                    return;
+                }
+
+                // Animação de Cast
+                socket.broadcast.to(player.map).emit('player_update', { 
+                    id: player.id, position: player.position, rotation: player.rotation, animation: 'ATTACK' 
+                });
+
+                // Efeito Visual da Explosão (Novo tipo: METEOR)
+                io.to(player.map).emit('play_vfx', {
+                    x: targetPos.x,
+                    z: targetPos.z,
+                    type: 'METEOR_EXPLOSION'
+                });
+
+                // CÁLCULO DE ÁREA
+                const radiusSq = skill.radius * skill.radius;
+                const magicDmg = skill.damage + (player.stats.matk || 10);
+
+                // 1. Monstros na área
+                Object.values(monsters).forEach(m => {
+                    if (m.map !== player.map || m.hp <= 0) return;
+                    
+                    const distSq = (m.position.x - targetPos.x)**2 + (m.position.z - targetPos.z)**2;
+                    
+                    if (distSq <= radiusSq) {
+                        // Acertou!
+                        let finalHp = m.takeDamage(magicDmg, player.id);
+                        
+                        io.to(player.map).emit('damage_dealt', {
+                            targetId: m.id, attackerId: player.id, damage: magicDmg, newHp: finalHp, isMonster: true,
+                            x: m.position.x, z: m.position.z
+                        });
+
+                        if (finalHp <= 0) handleMonsterDeath(player, m);
+                    }
+                });
+
+                // 2. Players na área (PVP)
+                if (MAP_CONFIG[player.map].pvp) {
+                    Object.values(onlinePlayers).forEach(p => {
+                        if (p.map !== player.map || p.id === player.id || p.stats.hp <= 0) return;
+                        
+                        const distSq = (p.position.x - targetPos.x)**2 + (p.position.z - targetPos.z)**2;
+                        
+                        if (distSq <= radiusSq) {
+                            let def = p.stats.def || 0;
+                            let finalDmg = Math.max(1, magicDmg - (def * 0.5));
+                            p.stats.hp = Math.max(0, p.stats.hp - finalDmg);
+                            
+                            io.to(player.map).emit('damage_dealt', {
+                                targetId: p.id, attackerId: player.id, damage: Math.floor(finalDmg), newHp: p.stats.hp, isMonster: false,
+                                x: p.position.x, z: p.position.z
+                            });
+
+                            if (p.stats.hp <= 0) handlePlayerDeath(p);
+                            else sendStatsUpdate(p);
+                        }
+                    });
+                }
+            }            
+
+            sendStatsUpdate(player);
+            player.isCasting = false;
+        };
+
+        if (skill.castTime > 0) {
+            player.isCasting = true;
+            io.to(player.map).emit('cast_start', { id: player.id, skillName: skill.name, time: skill.castTime });
+            player.castTimeout = setTimeout(() => {
+                if (player.isCasting) executeSkill();
+            }, skill.castTime);
+        } else {
+            executeSkill();
+        }
     });
 
     socket.on('disconnect', () => {
