@@ -36,14 +36,14 @@
     "data": {
       "map": "vilarejo",
       "position": {
-        "x": 0,
+        "x": -12.627555239350356,
         "y": 0,
-        "z": 0
+        "z": 10.948215480358915
       },
       "stats": {
-        "hp": 115.5,
+        "hp": 127,
         "mp": 100,
-        "cash": 860,
+        "cash": 900,
         "maxHp": 150,
         "maxMp": 100,
         "atk": 38,
@@ -60,7 +60,7 @@
         }
       },
       "level": 10,
-      "xp": 249,
+      "xp": 324,
       "points": 0,
       "attributes": {
         "str": 14,
@@ -87,15 +87,11 @@
         },
         {
           "id": 300,
-          "qtd": 1
+          "qtd": 7
         },
         {
           "id": 2,
           "qtd": 1
-        },
-        {
-          "id": 1,
-          "qtd": 6
         }
       ],
       "equipment": {
@@ -112,30 +108,53 @@
     "data": {
       "map": "vilarejo",
       "position": {
-        "x": -1.7440358805240779,
+        "x": -14.291662904076102,
         "y": 0,
-        "z": 1.2345344160882195
+        "z": 13.988240475659252
       },
       "stats": {
-        "hp": 70,
+        "hp": 45,
         "mp": 100,
-        "cash": 370,
+        "cash": 510,
         "maxHp": 150,
         "maxMp": 100,
-        "atk": 20,
+        "atk": 56,
         "matk": 10,
         "def": 5,
-        "eva": 3,
-        "attackSpeed": 1900
+        "eva": 4,
+        "attackSpeed": 1900,
+        "totalAttributes": {
+          "str": 23,
+          "agi": 5,
+          "int": 5,
+          "vit": 5
+        }
       },
-      "level": 6,
-      "xp": 227,
-      "points": 15,
+      "level": 7,
+      "xp": 249,
+      "points": 0,
       "attributes": {
-        "str": 5,
+        "str": 23,
         "agi": 5,
         "int": 5,
         "vit": 5
+      },
+      "inventory": [
+        {
+          "id": 300,
+          "qtd": 1
+        },
+        {
+          "id": 2,
+          "qtd": 2
+        }
+      ],
+      "equipment": {
+        "weapon": null,
+        "armor": null,
+        "head": null,
+        "legs": null,
+        "accessory": null
       }
     }
   },
@@ -144,51 +163,51 @@
     "data": {
       "map": "vilarejo",
       "position": {
-        "x": 2.237091684333098,
+        "x": -14.989360937121138,
         "y": 0,
-        "z": 5.708974985811033
+        "z": 13.95486093711929
       },
       "stats": {
-        "hp": 175.5,
+        "hp": 233,
         "mp": 100,
-        "cash": 5880,
-        "maxHp": 340,
+        "cash": 8750,
+        "maxHp": 320,
         "maxMp": 100,
-        "atk": 89,
+        "atk": 101,
         "matk": 10,
-        "def": 25,
+        "def": 22,
         "eva": 10,
         "attackSpeed": 1740,
         "speed": 0.16999999999999998,
         "totalAttributes": {
-          "str": 37,
+          "str": 43,
           "agi": 13,
           "int": 5,
           "vit": 22
         }
       },
-      "level": 20,
-      "xp": 2931,
+      "level": 22,
+      "xp": 2179,
       "points": 0,
       "attributes": {
-        "str": 37,
+        "str": 43,
         "agi": 13,
         "int": 5,
         "vit": 22
       },
       "inventory": [
         {
-          "id": 1,
-          "qtd": 58
+          "id": 300,
+          "qtd": 1
         },
         {
-          "id": 101,
-          "qtd": 1
+          "id": 2,
+          "qtd": 47
         }
       ],
       "equipment": {
         "weapon": 100,
-        "armor": 200,
+        "armor": null,
         "head": null,
         "legs": null,
         "accessory": null
@@ -200,31 +219,58 @@
     "data": {
       "map": "vilarejo",
       "position": {
-        "x": -1.0989914360440682,
+        "x": 0,
         "y": 0,
-        "z": 6.870445098236772
+        "z": 0
       },
       "stats": {
-        "hp": 240,
+        "hp": 290,
         "mp": 100,
-        "cash": 490,
-        "maxHp": 240,
+        "cash": 920,
+        "maxHp": 290,
         "maxMp": 100,
-        "atk": 22,
+        "atk": 27,
         "matk": 10,
-        "def": 14,
-        "eva": 5,
-        "attackSpeed": 1800,
-        "speed": 0.16999999999999998
+        "def": 19,
+        "eva": 6,
+        "attackSpeed": 1780,
+        "speed": 0.16999999999999998,
+        "totalAttributes": {
+          "str": 6,
+          "agi": 11,
+          "int": 5,
+          "vit": 19
+        }
       },
-      "level": 7,
-      "xp": 289,
-      "points": 3,
+      "level": 10,
+      "xp": 164,
+      "points": 6,
       "attributes": {
         "str": 6,
-        "agi": 10,
+        "agi": 11,
         "int": 5,
-        "vit": 14
+        "vit": 19
+      },
+      "inventory": [
+        {
+          "id": 2,
+          "qtd": 20
+        },
+        {
+          "id": 1,
+          "qtd": 6
+        },
+        {
+          "id": 300,
+          "qtd": 5
+        }
+      ],
+      "equipment": {
+        "weapon": 100,
+        "armor": null,
+        "head": null,
+        "legs": null,
+        "accessory": null
       }
     }
   },
@@ -591,6 +637,57 @@
       "inventory": [],
       "equipment": {
         "weapon": 100,
+        "armor": null,
+        "head": null,
+        "legs": null,
+        "accessory": null
+      }
+    }
+  },
+  "ggg": {
+    "password": "ggg",
+    "data": {
+      "map": "vilarejo",
+      "position": {
+        "x": -0.20089772060786348,
+        "y": 0,
+        "z": 10.954756157702537
+      },
+      "stats": {
+        "hp": 76.5,
+        "mp": 50,
+        "cash": 20,
+        "maxHp": 150,
+        "maxMp": 100,
+        "atk": 20,
+        "matk": 10,
+        "def": 5,
+        "eva": 3,
+        "attackSpeed": 1900,
+        "totalAttributes": {
+          "str": 5,
+          "agi": 5,
+          "int": 5,
+          "vit": 5
+        }
+      },
+      "level": 1,
+      "xp": 45,
+      "points": 0,
+      "attributes": {
+        "str": 5,
+        "agi": 5,
+        "int": 5,
+        "vit": 5
+      },
+      "inventory": [
+        {
+          "id": 1,
+          "qtd": 497
+        }
+      ],
+      "equipment": {
+        "weapon": null,
         "armor": null,
         "head": null,
         "legs": null,

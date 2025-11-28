@@ -8,7 +8,7 @@ export const UI = {
     loadingBarFill: document.getElementById('loading-bar-fill'),
     loadingPercent: document.getElementById('loading-percent'),    
     hud: document.getElementById('hud'),
-    hudButtons: document.getElementById('hud-buttons'), // Novo
+    hudButtons: document.getElementById('hud-buttons'),
     debugPanel: document.getElementById('debug-panel'),
     chatContainer: document.getElementById('chat-container'),
     canvasContainer: document.getElementById('canvas-container'),
@@ -64,14 +64,28 @@ export const UI = {
 
     // Chat
     chatInput: document.getElementById('chat-input'),
-    chatHistory: document.getElementById('chat-history')
+    chatHistory: document.getElementById('chat-history'),
+
+    // Hotkeys
+    hotbarSlots: document.querySelectorAll('.hotkey-slot'),
 };
 
-// --- 2. VARIÁVEIS LOCAIS PARA A JANELA DE STATUS ---
+// --- 2. VARIÁVEIS LOCAIS ---
 let tempAttributes = {};
 let tempPoints = 0;
 let realAttributesRef = {};
 let equipmentBonuses = { atk: 0, def: 0, matk: 0, eva: 0 };
+let hotbarState = [null, null, null, null, null, null];
+
+// Variáveis de Controle do Arraste de Itens
+let dragData = {
+    index: -1,
+    item: null,
+    isDragging: false,
+    ghostEl: null,
+    startX: 0,
+    startY: 0
+};
 
 // --- 3. FUNÇÕES GERAIS DE UI ---
 
@@ -133,6 +147,11 @@ export function toggleChatFocus(isActive) {
     }
 }
 
+export function updateLoadingBar(percent) {
+    if (UI.loadingBarFill) UI.loadingBarFill.style.width = percent + '%';
+    if (UI.loadingPercent) UI.loadingPercent.textContent = Math.floor(percent) + '%';
+}
+
 // --- 4. LÓGICA DA JANELA DE STATUS ---
 
 export function setupStatusWindowData(currentAttributes, currentPoints, currentRealStats) {
@@ -155,7 +174,6 @@ export function setupStatusWindowData(currentAttributes, currentPoints, currentR
 export function toggleStatusWindow() {
     if (UI.statusWindow.style.display === 'none') {
         UI.statusWindow.style.display = 'block';
-        // Se a janela de inventário estiver aberta, pode-se querer fechar ou manter por cima
         refreshStatusWindow();
     } else {
         UI.statusWindow.style.display = 'none';
@@ -205,15 +223,12 @@ export function getTempAttributes() {
     return tempAttributes;
 }
 
-export function updateLoadingBar(percent) {
-    if (UI.loadingBarFill) UI.loadingBarFill.style.width = percent + '%';
-    if (UI.loadingPercent) UI.loadingPercent.textContent = Math.floor(percent) + '%';
-}
-
-// --- 5. LÓGICA DE INVENTÁRIO ---
+// --- 5. LÓGICA DE INVENTÁRIO (DRAG & DROP FLUIDO) ---
 
 UI.updateInventory = function(inventory, equipment, db) {
+    // Esconde tooltip antigo para evitar bugs visuais
     hideTooltip();
+
     // A. Renderiza Equipamentos
     const renderEquip = (slotName, el) => {
         const id = equipment[slotName];
@@ -224,8 +239,7 @@ UI.updateInventory = function(inventory, equipment, db) {
             el.onmouseenter = (e) => showTooltip(e, item);
             el.onmouseleave = hideTooltip;
         } else {
-            // Limpa eventos
-            el.onmouseenter = null;
+            el.onmouseenter = null; 
             el.onmouseleave = null;
         }
     };
@@ -238,6 +252,7 @@ UI.updateInventory = function(inventory, equipment, db) {
 
     // B. Renderiza Mochila
     UI.bagGrid.innerHTML = '';
+    
     inventory.forEach((slot, index) => {
         const div = document.createElement('div');
         div.className = 'item-slot';
@@ -249,19 +264,142 @@ UI.updateInventory = function(inventory, equipment, db) {
                 div.innerHTML += `<div class="item-qtd">${slot.qtd}</div>`;
             }
             
-            div.onclick = () => window.useItem(index);
-            div.onmouseenter = (e) => showTooltip(e, item);
+            // --- EVENTOS DO SLOT ---
+            
+            // 1. Tooltip (Só mostra se não estiver arrastando)
+            div.onmouseenter = (e) => {
+                if(!dragData.isDragging) showTooltip(e, item);
+            };
             div.onmouseleave = hideTooltip;
+
+            // 2. Início do Clique (Prepara o arraste)
+            div.onmousedown = (e) => {
+                if(e.button !== 0) return; // Só botão esquerdo
+                e.preventDefault(); // Impede seleção nativa
+
+                dragData.index = index;
+                dragData.item = { ...item, qtd: slot.qtd }; 
+                dragData.startX = e.clientX;
+                dragData.startY = e.clientY;
+                dragData.isDragging = false; // Ainda não começou a mover
+
+                document.addEventListener('mousemove', onDragMove);
+            };
         }
 
         UI.bagGrid.appendChild(div);
     });
 };
 
-// Funções Internas de Tooltip
+// --- LISTENER DE DROP ATUALIZADO ---
+document.addEventListener('mouseup', (e) => {
+    // 1. Botão Direito (Remover) - MANTENHA IGUAL AO ANTERIOR
+    if (e.button === 2) {
+        const slot = e.target.closest('.hotkey-slot');
+        if (slot) {
+            const key = parseInt(slot.dataset.key) - 1;
+            hotbarState[key] = null;
+            const contentDiv = slot.querySelector('.hotkey-content');
+            contentDiv.innerHTML = '';
+            const qtdDiv = slot.querySelector('.hotkey-qtd');
+            if (qtdDiv) qtdDiv.textContent = ''; 
+            slot.style.opacity = '1';
+        }
+        return;
+    }
+
+    // 2. Lógica de Botão Esquerdo
+    // Se estava arrastando algo (Drop) - MANTENHA IGUAL
+    if (dragData.isDragging) {
+        stopItemDrag(); 
+        const hotbarSlot = e.target.closest('.hotkey-slot');
+        if (hotbarSlot) {
+            const key = parseInt(hotbarSlot.dataset.key) - 1;
+            hotbarState[key] = dragData.item.id;
+            const contentDiv = hotbarSlot.querySelector('.hotkey-content');
+            contentDiv.innerHTML = `<img src="assets/icons/${dragData.item.icon}">`;
+            const qtdDiv = hotbarSlot.querySelector('.hotkey-qtd');
+            if (qtdDiv) qtdDiv.textContent = (dragData.item.qtd > 1) ? dragData.item.qtd : '';
+            hotbarSlot.style.opacity = '1';
+            dragData.index = -1; dragData.item = null; dragData.isDragging = false;
+            return;
+        }
+
+        const rect = UI.inventoryWindow.getBoundingClientRect();
+        const isInside = (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom);
+
+        if (!isInside && UI.inventoryWindow.style.display !== 'none') {
+            openDropModal(dragData.index, dragData.item);
+        }
+
+    } else {
+        // --- AQUI ESTÁ A MUDANÇA PARA O CLIQUE SIMPLES ---
+        
+        // Caso A: Clicou em um item no Inventário (Usar/Equipar)
+        if (dragData.index !== -1 && window.useItem) {
+            window.useItem(dragData.index);
+        }
+        
+        // Caso B: Clicou na Hotbar (NOVO)
+        const hotbarSlot = e.target.closest('.hotkey-slot');
+        if (hotbarSlot) {
+            const key = parseInt(hotbarSlot.dataset.key) - 1;
+            // Chama a função que criamos no game.js
+            if (window.triggerHotkey) window.triggerHotkey(key);
+        }
+    }
+
+    document.removeEventListener('mousemove', onDragMove);
+    dragData.index = -1;
+    dragData.item = null;
+    dragData.isDragging = false;
+});
+
+// Função isolada para ser adicionada/removida dinamicamente
+function onDragMove(e) {
+    if (dragData.item === null) return;
+
+    if (!dragData.isDragging) {
+        const dx = Math.abs(e.clientX - dragData.startX);
+        const dy = Math.abs(e.clientY - dragData.startY);
+        if (dx > 5 || dy > 5) startItemDrag(e);
+    }
+
+    if (dragData.isDragging && dragData.ghostEl) {
+        dragData.ghostEl.style.left = (e.clientX - 20) + 'px';
+        dragData.ghostEl.style.top = (e.clientY - 20) + 'px';
+    }
+}
+
+// Funções Auxiliares do Fantasma de Item
+function startItemDrag(e) {
+    dragData.isDragging = true;
+    hideTooltip(); // Esconde tooltip para não atrapalhar
+
+    // Cria o elemento visual
+    const ghost = document.createElement('div');
+    ghost.className = 'drag-ghost';
+    ghost.innerHTML = `<img src="assets/icons/${dragData.item.icon}">`;
+    document.body.appendChild(ghost);
+    
+    dragData.ghostEl = ghost;
+    
+    // Posiciona inicialmente
+    ghost.style.left = (e.clientX - 20) + 'px';
+    ghost.style.top = (e.clientY - 20) + 'px';
+}
+
+function stopItemDrag() {
+    if (dragData.ghostEl) {
+        dragData.ghostEl.remove();
+        dragData.ghostEl = null;
+    }
+}
+
+// --- 6. FUNÇÕES DE TOOLTIP ---
+
 function showTooltip(e, item) {
     const tt = UI.tooltip;
-    
     let statsHtml = '';
     if(item.stats) {
         if(item.stats.atk) statsHtml += `<span class="stat">ATK: +${item.stats.atk}</span>`;
@@ -286,19 +424,13 @@ function showTooltip(e, item) {
 
     tt.style.display = 'block';
 
-    // Cálculo de posição para não sair da tela
     const width = tt.offsetWidth;
     const height = tt.offsetHeight;
-
     let finalX = e.clientX + 15;
     let finalY = e.clientY + 15;
 
-    if (finalX + width > window.innerWidth) {
-        finalX = e.clientX - width - 10;
-    }
-    if (finalY + height > window.innerHeight) {
-        finalY = e.clientY - height - 10;
-    }
+    if (finalX + width > window.innerWidth) finalX = e.clientX - width - 10;
+    if (finalY + height > window.innerHeight) finalY = e.clientY - height - 10;
 
     tt.style.left = finalX + 'px';
     tt.style.top = finalY + 'px';
@@ -307,6 +439,49 @@ function showTooltip(e, item) {
 function hideTooltip() {
     UI.tooltip.style.display = 'none';
 }
+
+// --- 7. MODAL DROP ---
+
+let pendingDropIndex = -1;
+
+function openDropModal(index, item) {
+    pendingDropIndex = index;
+    const modal = document.getElementById('drop-modal');
+    const nameEl = document.getElementById('drop-item-name');
+    const qtdCont = document.getElementById('drop-qtd-container');
+    const input = document.getElementById('drop-qtd-input');
+    
+    modal.style.display = 'flex';
+    nameEl.textContent = item.name;
+    
+    // --- LÓGICA DE QUANTIDADE ---
+    if (item.qtd > 1) {
+        qtdCont.style.display = 'block'; // Mostra o campo
+        input.max = item.qtd;            // Trava o máximo
+        input.value = 1;                 // Reseta pra 1
+        
+        // Dica visual: Coloca o foco no input pra digitar rápido
+        setTimeout(() => input.focus(), 50); 
+    } else {
+        qtdCont.style.display = 'none';  // Esconde se for só 1
+        input.value = 1;
+    }
+}
+
+window.closeDropModal = () => {
+    document.getElementById('drop-modal').style.display = 'none';
+};
+
+window.confirmDrop = () => {
+    const input = document.getElementById('drop-qtd-input');
+    let qtd = parseInt(input.value);
+    if(qtd < 1) qtd = 1;
+    
+    if(window.requestDrop) window.requestDrop(pendingDropIndex, qtd);
+    closeDropModal();
+};
+
+// --- 8. SISTEMA DE ARRASTAR JANELAS (DRAG DE JANELA) ---
 
 function makeDraggable(elementId) {
     const el = document.getElementById(elementId);
@@ -317,45 +492,27 @@ function makeDraggable(elementId) {
 
     header.onmousedown = function(e) {
         e.preventDefault();
-        
-        // Traz a janela para frente das outras ao clicar
-        // (Simples hack de z-index: aumenta em 10 toda vez que clica)
         el.style.zIndex = parseInt(window.getComputedStyle(el).zIndex) + 2;
-
         isDragging = true;
-        
-        // Pega a posição do mouse inicial
         startX = e.clientX;
         startY = e.clientY;
-
-        // TRUQUE IMPORTANTE:
-        // O CSS usa 'transform: translate(-50%, -50%)' para centralizar.
-        // Ao arrastar, precisamos remover isso e usar left/top fixos em pixels.
-        
         const rect = el.getBoundingClientRect();
-        
-        // Se ainda tiver transform, removemos e fixamos a posição atual
         if (el.style.transform !== 'none') {
             el.style.left = rect.left + 'px';
             el.style.top = rect.top + 'px';
-            el.style.transform = 'none'; // Desliga a centralização automática
+            el.style.transform = 'none';
             el.style.margin = 0;
         }
-
         initialLeft = el.offsetLeft;
         initialTop = el.offsetTop;
-
-        // Eventos globais (no document) para não perder o arraste se o mouse sair rápido
         document.onmousemove = onMouseMove;
         document.onmouseup = onMouseUp;
     };
 
     function onMouseMove(e) {
         if (!isDragging) return;
-
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
-
         el.style.left = (initialLeft + dx) + 'px';
         el.style.top = (initialTop + dy) + 'px';
     }
@@ -367,7 +524,45 @@ function makeDraggable(elementId) {
     }
 }
 
-// INICIALIZA O SISTEMA
-// (Chama a função para as janelas que queremos que sejam arrastáveis)
+// Renderiza os ícones na barra baseado no hotbarState
+export function renderHotbar(inventory, itemDB) {
+    const slots = document.querySelectorAll('.hotkey-slot');
+    
+    hotbarState.forEach((itemId, index) => {
+        const slotDiv = slots[index];
+        const contentDiv = slotDiv.querySelector('.hotkey-content');
+        const qtdDiv = slotDiv.querySelector('.hotkey-qtd');
+        
+        // Limpa tudo antes
+        contentDiv.innerHTML = '';
+        qtdDiv.textContent = '';
+        slotDiv.style.opacity = '1'; // Reseta opacidade
+
+        if (itemId && itemDB[itemId]) {
+            const item = itemDB[itemId];
+            contentDiv.innerHTML = `<img src="assets/icons/${item.icon}">`;
+            
+            // Procura o item no inventário para pegar a quantidade
+            const itemInBag = inventory.find(i => i.id === itemId);
+            
+            if (itemInBag) {
+                // Se achou, mostra a quantidade (se for maior que 1)
+                if (itemInBag.qtd >= 1) {
+                    qtdDiv.textContent = itemInBag.qtd;
+                }
+            } else {
+                // Se NÃO ACHOU (acabou), deixa o ícone "apagado"
+                slotDiv.style.opacity = '0.5';
+            }
+        }
+    });
+}
+
+// Retorna o ID do item no slot X (para o game.js usar)
+export function getHotkeyItem(slotIndex) { // slotIndex de 0 a 5
+    return hotbarState[slotIndex];
+}
+
+// INICIALIZA SISTEMAS
 makeDraggable('status-window');
 makeDraggable('inventory-window');

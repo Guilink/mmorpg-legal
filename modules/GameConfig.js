@@ -97,6 +97,7 @@ const BEHAVIOR = {
 const MONSTER_TYPES = {
     'bolota': { 
         name: 'Bolota Cascavél',
+        drops: [{ itemId: 300, chance: 40 }, { itemId: 1, chance: 15 }],
         model: 'm1_slimecobra', 
         scale: 0.40,
         hp: 80, maxHp: 80,

@@ -15,7 +15,9 @@ import {
     refreshStatusWindow,
     changeAttr,
     getTempAttributes,
-    updateLoadingBar // Necessário para enviar os dados alterados
+    updateLoadingBar,
+    renderHotbar,
+    getHotkeyItem
 } from './js/UIManager.js';
 import { keys, setupInputs, getIsChatActive, setChatActive } from './js/InputManager.js';
 import { 
@@ -23,7 +25,8 @@ import {
     createChatBubble, 
     showDamageNumber, 
     createTargetIndicator, 
-    createTextSprite 
+    createTextSprite,
+    GroundItemManager
 } from './js/VFX.js';
 
 // --- INICIALIZAÇÃO DO SOCKET ---
@@ -38,12 +41,13 @@ let otherPlayers = {};
 let monsters = {};
 let monsterTemplates = {}; 
 let globalMonsterTypes = {};
-let mapProps = [];
 let targetRing = null; // O objeto visual 3D do anel
 let currentTargetId = null; // Quem é o meu alvo atual (objeto do monstro ou player)
 let frameCount = 0;
 let lastFpsTime = 0;
 let itemDB = {};
+let lastPickupTime = 0; // Controle de tempo do 'Q'
+let myInventory = []; // Cache local do inventário
 
 const pendingLoads = new Set();
 
@@ -51,6 +55,7 @@ const pendingLoads = new Set();
 const tempVector = new THREE.Vector3();
 const tempOrigin = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
 
 // Audio
 let bgmAudio = new Audio();
@@ -137,6 +142,32 @@ window.unequipItem = (slot) => {
     socket.emit('unequip_item', slot);
 };
 
+window.addEventListener('mousedown', (e) => {
+    // Só botão esquerdo e se não estiver digitando
+    if (e.button !== 0 || getIsChatActive()) return;
+
+    // Converte mouse para 3D
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+
+    // Checa colisão com itens
+    const sprites = Object.values(GroundItemManager.items);
+    const intersects = raycaster.intersectObjects(sprites);
+
+    if (intersects.length > 0) {
+        const target = intersects[0].object;
+        if (target.userData.isGroundItem) {
+            // Manda pegar o específico clicado
+            socket.emit('pickup_request', target.userData.uniqueId);
+            
+            // Opcional: Impedir que o char ande pra lá se clicar no item
+            // e.stopPropagation(); 
+        }
+    }
+});
+
 // --- AUDIO ---
 function playBGM(file) {
     if (bgmAudio.src.includes(file)) return; 
@@ -155,9 +186,10 @@ socket.on('login_success', (data) => {
     playBGM('assets/bgm2.webm');
     showGameInterface(); // Esconde login, mostra HUD/Chat
     
+    // --- 1. GUARDA TODOS OS DADOS EM VARIÁVEIS PRIMEIRO ---
     myUsername = data.playerData.username; 
     
-    // Carrega dados RPG
+    // Dados de RPG
     if(data.playerData.stats) myStats = data.playerData.stats;
     myLevel = data.playerData.level || 1;
     myXp = data.playerData.xp || 0;
@@ -166,22 +198,64 @@ socket.on('login_success', (data) => {
     myPoints = data.playerData.points || 0;
     globalMonsterTypes = data.monsterTypes || {};
 
+    // Dados de Itens
+    myInventory = data.inventory;
+    itemDB = data.itemDB;
+
+    // --- 2. INICIA O MOTOR 3D (CRIA A 'SCENE') ---
     initEngine(); 
+    
+    // --- 3. ATUALIZA A UI BÁSICA ---
     updateHUD(myStats, myLevel, myXp, myNextXp); 
+    UI.updateInventory(data.inventory, data.equipment, itemDB);
+    renderHotbar(myInventory, itemDB); 
+
+    // --- 4. CARREGA O MUNDO 3D ---
+    // A função loadMap vai limpar a cena de qualquer sujeira antiga
     loadMap(data.mapConfig, data.playerData, data.mapPlayers, data.mapMonsters);
-    itemDB = data.itemDB; // Salva o DB
-    UI.updateInventory(data.inventory, data.equipment, itemDB); // Atualiza UI inicial    
+    
+    // --- 5. DESENHA OS ITENS NO CHÃO (AGORA QUE A SCENE EXISTE) ---
+    if (data.mapGroundItems) {
+        Object.values(data.mapGroundItems).forEach(item => {
+            GroundItemManager.spawn(item, scene, itemDB);
+        });
+    }
+});
+
+// Item caiu
+socket.on('ground_item_spawn', (item) => {
+    GroundItemManager.spawn(item, scene, itemDB);
+});
+
+// Item foi pego ou sumiu
+socket.on('ground_item_remove', (id) => {
+    GroundItemManager.remove(id, scene);
+});
+
+socket.on('ground_item_expire', (id) => {
+    GroundItemManager.expire(id, scene);
 });
 
 socket.on('inventory_update', (data) => {
+    myInventory = data.inventory; // Atualiza cache
     UI.updateInventory(data.inventory, data.equipment, itemDB);
+    renderHotbar(myInventory, itemDB);
 });
 
 // --- SOCKET EVENTS (GAMEPLAY) ---
 socket.on('map_changed', (data) => { 
-    currentTargetId = null; // Limpa o ID
+    currentTargetId = null; 
     if(targetRing) targetRing.visible = false;
+    
+    // 1. Carrega o mapa (isso agora vai limpar os itens antigos graças à alteração acima)
     loadMap(data.mapConfig, data.playerData, data.mapPlayers, data.mapMonsters); 
+    
+    // 2. Carrega os itens do NOVO mapa (se houver)
+    if (data.mapGroundItems) {
+        Object.values(data.mapGroundItems).forEach(item => {
+            GroundItemManager.spawn(item, scene, itemDB);
+        });
+    }
 });
 
 socket.on('update_stats', (data) => {
@@ -215,7 +289,6 @@ socket.on('player_left', (id) => {
     if (pendingLoads.has(id)) {
         pendingLoads.delete(id);
     }
-aaaaaaaaaaaaaaaaaaa
     if(otherPlayers[id]) { 
         FadeManager.fadeOutAndRemove(otherPlayers[id], scene); 
         delete otherPlayers[id]; 
@@ -477,6 +550,18 @@ function initEngine() {
         }
     });
 
+    window.triggerHotkey = (slotIndex) => {
+        const itemId = getHotkeyItem(slotIndex); // Importada de UIManager
+        if (!itemId) return; // Slot vazio
+
+        // Procura onde esse item está na mochila
+        const inventoryIndex = myInventory.findIndex(slot => slot.id === itemId);
+
+        if (inventoryIndex !== -1) {
+            socket.emit('use_item', inventoryIndex);
+        }
+    };
+
     setupInputs(
         () => {
             if (document.activeElement === UI.chatInput) {
@@ -513,8 +598,41 @@ function initEngine() {
             }
         },
         () => window.toggleStatusWindow(), // Alt+S chama a função global
-        () => window.toggleInventory()     // Alt+I chama a função global            
-    );
+        () => window.toggleInventory(),   // Alt+I chama a função global            
+        // 6. Q (PEGAR ITEM) - ADICIONE ESTE BLOCO:
+        () => {
+                if(!myPlayer) return;
+                
+                // --- ALTERAÇÃO: COOLDOWN DE 1 SEGUNDO ---
+                const now = Date.now();
+                if (now - lastPickupTime < 1000) return; // Se passou menos de 1s, ignora
+                lastPickupTime = now;
+                // ----------------------------------------
+
+                let closestId = null;
+                let minDist = 1.5; // --- ALTERAÇÃO: ALCANCE MENOR NO CLIENTE ---
+
+                Object.values(GroundItemManager.items).forEach(sprite => {
+                    // Ignora itens que já estão subindo (sendo pegos)
+                    if (sprite.userData.state === 'PICKUP') return;
+
+                    const dist = myPlayer.position.distanceTo(sprite.position);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        closestId = sprite.userData.uniqueId;
+                    }
+                });
+
+                if (closestId) {
+                    socket.emit('pickup_request', closestId);
+                }
+        },
+        // 7. HOTKEYS (1-6)
+        (keyNumber) => {
+            // Agora apenas chamamos a função global
+            window.triggerHotkey(keyNumber - 1);
+        }
+    );        
 
     window.addEventListener('resize', () => { 
         if(!camera || !renderer) return;
@@ -554,9 +672,8 @@ function loadMap(mapConfig, myData, players, mobs) {
     });
     monsters = {}; 
 
-    // Remove props antigos (se houver)
-    mapProps.forEach(p => scene.remove(p)); 
-    mapProps = [];
+    // Isso apaga os sprites do mapa anterior
+    GroundItemManager.clearAll(scene);    
     // ----------------------------------
     
     const loader = new THREE.GLTFLoader();
@@ -963,7 +1080,7 @@ function animate() {
 
     const delta = clock.getDelta();
     FadeManager.update(delta);
-
+    GroundItemManager.update(delta, scene);
     // ==================================================================
     // 1. JOGADOR LOCAL
     // ==================================================================
@@ -1156,3 +1273,7 @@ function animate() {
 
     renderer.render(scene, camera);
 }
+
+window.requestDrop = (index, qtd) => {
+    socket.emit('drop_item_request', { slotIndex: index, qtd: qtd });
+};

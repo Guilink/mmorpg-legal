@@ -60,8 +60,8 @@
 
     <!-- BOTÕES LATERAIS (Separado do HUD para alinhar perfeito) -->
     <div class="hud-buttons" id="hud-buttons" style="display: none;">
-        <div id="btn-status" onclick="toggleStatusWindow()">S</div>
-        <div id="btn-inventory" onclick="toggleInventory()">I</div>
+        <div id="btn-status" onclick="toggleStatusWindow()">A</div>
+        <div id="btn-inventory" onclick="toggleInventory()">E</div>
     </div>
 
     <!-- JANELA DE STATUS -->
@@ -173,6 +173,16 @@
         <div>PLAYERS: <span id="dbg-players">0</span></div>
     </div>
 
+<!-- HOTBAR (ATALHOS) -->
+    <div id="hotbar-container">
+        <div class="hotkey-slot" data-key="1"><span class="key-number">1</span><div id="hotkey-1" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
+        <div class="hotkey-slot" data-key="2"><span class="key-number">2</span><div id="hotkey-2" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
+        <div class="hotkey-slot" data-key="3"><span class="key-number">3</span><div id="hotkey-3" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
+        <div class="hotkey-slot" data-key="4"><span class="key-number">4</span><div id="hotkey-4" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
+        <div class="hotkey-slot" data-key="5"><span class="key-number">5</span><div id="hotkey-5" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
+        <div class="hotkey-slot" data-key="6"><span class="key-number">6</span><div id="hotkey-6" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
+    </div>
+
     <!-- CHAT -->
     <div id="chat-container" style="display: none; opacity: 0.5;">
         <div id="chat-history"></div>
@@ -194,7 +204,24 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     
-    <!-- GAME LOGIC -->
+    <!-- MODAL DE DROP -->
+    <div id="drop-modal" style="display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:3000; align-items:center; justify-content:center;">
+        <div class="panel-box" style="width: 300px; background: #111; border: 2px solid #a00;">
+            <h2 style="color: #f55; margin-bottom: 15px;">JOGAR NO CHÃO?</h2>
+            <div id="drop-item-name" style="color: white; margin-bottom: 15px; font-weight:bold;">Item</div>
+            
+            <div id="drop-qtd-container" style="display:none; margin-bottom: 15px;">
+                <span style="color:#aaa; font-size:12px;">Quantidade (Máx: <span id="lbl-max-qtd"></span>):</span><br>
+                <input type="number" id="drop-qtd-input" min="1" value="1" style="width: 80px; text-align: center; padding:5px; margin-top:5px;">
+            </div
+
+            <div style="display:flex; gap: 10px; justify-content:center;">
+                <button onclick="confirmDrop()" style="background:#a00; border:none; width:auto; padding:10px 20px;">JOGAR</button>
+                <button onclick="closeDropModal()" style="background:#444; border:none; width:auto; padding:10px 20px;">CANCELAR</button>
+            </div>
+        </div>
+    </div>
+        <!-- GAME LOGIC -->
     <script type="module" src="game.js"></script>
 </body>
 </html>

@@ -208,3 +208,106 @@ export function createTextSprite(text, color) {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c) }));
     s.scale.set(2, 0.5, 1); return s;
 }
+
+// Cache fora do objeto para persistir
+const textureCache = {}; 
+
+export const GroundItemManager = {
+    items: {}, 
+
+    spawn: (data, scene, itemDB) => {
+        if (GroundItemManager.items[data.uniqueId]) return;
+
+        const dbItem = itemDB[data.itemId];
+        if (!dbItem) return;
+
+        const createSprite = (tex) => {
+            const material = new THREE.SpriteMaterial({ map: tex, transparent: true });
+            const sprite = new THREE.Sprite(material);
+            sprite.scale.set(0.4, 0.4, 1); 
+            sprite.position.set(data.x, 1.2, data.z); 
+            
+            sprite.userData = { 
+                isGroundItem: true, 
+                uniqueId: data.uniqueId, 
+                name: dbItem.name,
+                state: 'FALLING',
+                velocityY: 0
+            };
+            
+            scene.add(sprite);
+            GroundItemManager.items[data.uniqueId] = sprite;
+        };
+
+        // LÓGICA DE CACHE AQUI
+        const iconPath = `assets/icons/${dbItem.icon}`;
+        
+        if (textureCache[iconPath]) {
+            // Se já tem no cache, usa direto (ZERO Custo de Rede)
+            createSprite(textureCache[iconPath]);
+        } else {
+            // Se não tem, carrega e salva
+            new THREE.TextureLoader().load(iconPath, (texture) => {
+                textureCache[iconPath] = texture;
+                createSprite(texture);
+            });
+        }
+    },
+
+    remove: (uniqueId, scene) => {
+        const sprite = GroundItemManager.items[uniqueId];
+        if (sprite) sprite.userData.state = 'PICKUP';
+    },
+
+    expire: (uniqueId, scene) => {
+        const sprite = GroundItemManager.items[uniqueId];
+        if (sprite) {
+            scene.remove(sprite);
+            // O material deve ser descartado para liberar memória GPU
+            if(sprite.material) sprite.material.dispose();
+            delete GroundItemManager.items[uniqueId];
+        }
+    },    
+
+    clearAll: (scene) => {
+        Object.values(GroundItemManager.items).forEach(sprite => {
+            scene.remove(sprite);
+            if(sprite.material) sprite.material.dispose(); // Importante para memória
+        });
+        GroundItemManager.items = {};
+    },
+
+    update: (delta, scene) => {
+        const GRAVITY = 8.0;
+        const FLOOR_Y = 0.1;
+
+        Object.keys(GroundItemManager.items).forEach(key => {
+            const sprite = GroundItemManager.items[key];
+            const state = sprite.userData.state;
+
+            if (state === 'FALLING') {
+                sprite.userData.velocityY -= GRAVITY * delta;
+                sprite.position.y += sprite.userData.velocityY * delta;
+
+                if (sprite.position.y <= FLOOR_Y) {
+                    sprite.position.y = FLOOR_Y;
+                    if (Math.abs(sprite.userData.velocityY) > 2.0) {
+                        sprite.userData.velocityY = -sprite.userData.velocityY * 0.3;
+                    } else {
+                        sprite.userData.state = 'IDLE';
+                    }
+                }
+            }
+            else if (state === 'PICKUP') {
+                sprite.position.y += 2.0 * delta;
+                sprite.material.opacity -= 2.0 * delta;
+
+                if (sprite.material.opacity <= 0) {
+                    scene.remove(sprite);
+                    if(sprite.material) sprite.material.dispose(); // Limpa GPU
+                    delete GroundItemManager.items[key];
+                }
+            }
+        });
+    }
+};
