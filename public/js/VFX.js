@@ -311,3 +311,186 @@ export const GroundItemManager = {
         });
     }
 };
+
+// --- SISTEMA DE PARTÍCULAS (NOVO) ---
+
+// 1. Gera uma textura de partícula "fumacinha" via código (sem precisar de imagem externa)
+function createParticleTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 32; canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    
+    // Gradiente radial para parecer uma esfera de luz suave
+    const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 1)'); // Centro branco
+    grad.addColorStop(0.4, 'rgba(255, 255, 255, 0.5)');
+    grad.addColorStop(1, 'rgba(255, 255, 255, 0)'); // Borda transparente
+    
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 32, 32);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    return texture;
+}
+
+const particleTexture = createParticleTexture(); // Cache da textura
+
+// ... (Mantenha a função createParticleTexture e a const particleTexture no topo igual) ...
+
+export const ParticleManager = {
+    particles: [],
+    emitters: [], 
+
+    // Explosão (Poções - Mantido igual)
+    spawnBurst: (scene, position, color, count = 20) => {
+        const material = new THREE.SpriteMaterial({ 
+            map: particleTexture, color: color, transparent: true, 
+            opacity: 1.0, depthWrite: false, blending: THREE.AdditiveBlending 
+        });
+
+        for (let i = 0; i < count; i++) {
+            const sprite = new THREE.Sprite(material.clone());
+            sprite.position.copy(position);
+            sprite.position.x += (Math.random() - 0.5) * 0.5;
+            sprite.position.y += (Math.random() * 1.0) + 0.5;
+            sprite.position.z += (Math.random() - 0.5) * 0.5;
+            
+            const scale = 0.3 + Math.random() * 0.3;
+            sprite.scale.set(scale, scale, 1);
+
+            sprite.userData = {
+                behavior: 'PHYSICS',
+                velocity: new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.5,
+                    (Math.random() * 1.0) + 0.5,
+                    (Math.random() - 0.5) * 0.5
+                ),
+                life: 1.0 + Math.random() * 0.5,
+                maxLife: 1.5
+            };
+            scene.add(sprite);
+            ParticleManager.particles.push(sprite);
+        }
+    },
+
+    // --- PORTAL DE CHÃO (VÓRTICE SUAVE) ---
+    createPortal: (scene, x, z) => {
+        const emitter = {
+            scene: scene,
+            center: new THREE.Vector3(x, 0.05, z), // Bem rente ao chão
+            rate: 0.08, // Levemente menos partículas para não poluir
+            timer: 0,
+            color: 0x00ffff // Ciano
+        };
+        ParticleManager.emitters.push(emitter);
+    },
+
+    update: (delta, scene) => {
+        // 1. Atualiza Emissores
+        ParticleManager.emitters.forEach(e => {
+            e.timer += delta;
+            if (e.timer >= e.rate) {
+                e.timer = 0;
+                
+                const material = new THREE.SpriteMaterial({ 
+                    map: particleTexture, 
+                    color: e.color, 
+                    transparent: true, 
+                    opacity: 0.0, 
+                    depthWrite: false, 
+                    blending: THREE.AdditiveBlending 
+                });
+
+                const sprite = new THREE.Sprite(material);
+                
+                // AJUSTE 1: Raio inicial um pouco menor (0.9)
+                const angle = Math.random() * Math.PI * 2;
+                const radius = 0.7; 
+
+                sprite.position.set(
+                    e.center.x + Math.cos(angle) * radius,
+                    0.05, // Nasce no chão
+                    e.center.z + Math.sin(angle) * radius
+                );
+
+                // Tamanho das partículas um pouco menor
+                const scale = 0.10 + Math.random() * 0.25;
+                sprite.scale.set(scale, scale, 1);
+
+                sprite.userData = {
+                    behavior: 'VORTEX',
+                    center: e.center.clone(),
+                    angle: angle,
+                    radius: radius,
+                    
+                    // --- AQUI ESTÃO AS MUDANÇAS CHAVE ---
+                    // Velocidade de subida MUITO BAIXA (0.1 a 0.3) -> Fica no chão
+                    speedY: 0.1 + Math.random() * 0.2, 
+                    
+                    // Rotação mais calma (1.0 a 1.5) -> Antes era 2.0+
+                    angularSpeed: 0.15 + Math.random() * 0.3, 
+                    
+                    // Vida curta (1.2s) -> Morre antes de subir muito
+                    life: 1.2, 
+                    maxLife: 1.2
+                };
+
+                e.scene.add(sprite);
+                ParticleManager.particles.push(sprite);
+            }
+        });
+
+        // 2. Atualiza Partículas
+        for (let i = ParticleManager.particles.length - 1; i >= 0; i--) {
+            const p = ParticleManager.particles[i];
+            const data = p.userData;
+
+            if (data.behavior === 'VORTEX') {
+                data.life -= delta;
+                
+                // Sobe devagar
+                p.position.y += data.speedY * delta;
+                
+                // Gira suavemente
+                data.angle += data.angularSpeed * delta;
+                
+                // Fecha o raio BEM DEVAGAR (para manter o formato de disco/pizza)
+                data.radius -= 0.15 * delta; // Antes era 0.3
+                if (data.radius < 0) data.radius = 0;
+
+                p.position.x = data.center.x + Math.cos(data.angle) * data.radius;
+                p.position.z = data.center.z + Math.sin(data.angle) * data.radius;
+
+                // Opacidade: Fade in rápido, Fade out lento
+                const lifePct = data.life / data.maxLife;
+                if (lifePct > 0.8) {
+                    p.material.opacity = (1.0 - lifePct) * 5.0; 
+                } else {
+                    p.material.opacity = lifePct * 0.8; // Max opacidade 0.8 (mais sutil)
+                }
+
+            } else {
+                // Física normal (Poções)
+                p.position.addScaledVector(data.velocity, delta);
+                data.velocity.y += 0.5 * delta;
+                data.life -= delta;
+                p.material.opacity = (data.life / data.maxLife);
+            }
+
+            if (data.life <= 0) {
+                scene.remove(p);
+                p.material.dispose();
+                ParticleManager.particles.splice(i, 1);
+            }
+        }
+    },
+    
+    clearAll: (scene) => {
+        ParticleManager.particles.forEach(p => {
+             scene.remove(p);
+             p.material.dispose();
+        });
+        ParticleManager.particles = [];
+        ParticleManager.emitters = [];
+    }
+};

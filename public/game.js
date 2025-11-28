@@ -26,7 +26,8 @@ import {
     showDamageNumber, 
     createTargetIndicator, 
     createTextSprite,
-    GroundItemManager
+    GroundItemManager,
+    ParticleManager // <--- Adicionado aqui, junto com os outros
 } from './js/VFX.js';
 
 // --- INICIALIZAÇÃO DO SOCKET ---
@@ -445,6 +446,29 @@ socket.on('damage_dealt', (d) => {
     }
 });
 
+socket.on('play_vfx', (data) => {
+    // 1. Descobre quem é o alvo (Eu ou Outro Player ou Monstro)
+    let targetObj = null;
+
+    if (data.targetId === socket.id) {
+        targetObj = myPlayer;
+    } else if (otherPlayers[data.targetId]) {
+        targetObj = otherPlayers[data.targetId];
+    } else if (monsters[data.targetId]) {
+        targetObj = monsters[data.targetId];
+    }
+
+    if (targetObj) {
+        // 2. Define a cor baseada no tipo
+        let color = 0xffffff; // Branco padrão
+        if (data.type === 'POTION_HP') color = 0xff0000; // Verde Claro
+        if (data.type === 'POTION_MP') color = 0x0000ff; // Azul
+
+        // 3. Cria a explosão de partículas na posição do alvo
+        ParticleManager.spawnBurst(scene, targetObj.position, color, 10);
+    }
+});
+
 // ... Socket Events ...
 socket.on('server_stats', (data) => {
     totalOnline = data.total;
@@ -674,8 +698,8 @@ function loadMap(mapConfig, myData, players, mobs) {
 
     // Isso apaga os sprites do mapa anterior
     GroundItemManager.clearAll(scene);    
-    // ----------------------------------
-    
+    ParticleManager.clearAll(scene);
+
     const loader = new THREE.GLTFLoader();
     
     // Contador de assets para saber quando tudo terminou
@@ -798,12 +822,8 @@ function finalizeMapLoad(myData, players, mobs) {
     }
     
     if(currentMapConfig.portals) {
-        const geo = new THREE.CylinderGeometry(1, 1, 0.1, 32);
-        const mat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.3 });
         currentMapConfig.portals.forEach(p => {
-            const mesh = new THREE.Mesh(geo, mat);
-            mesh.position.set(p.x, 0.1, p.z);
-            environmentLayer.add(mesh);
+            ParticleManager.createPortal(scene, p.x, p.z);
         });
     }
     
@@ -1081,6 +1101,7 @@ function animate() {
     const delta = clock.getDelta();
     FadeManager.update(delta);
     GroundItemManager.update(delta, scene);
+    ParticleManager.update(delta, scene);
     // ==================================================================
     // 1. JOGADOR LOCAL
     // ==================================================================

@@ -599,6 +599,7 @@ io.on('connection', (socket) => {
         if (!dbItem) return;
 
         if (dbItem.type === ITEM_TYPES.EQUIPMENT) {
+            // ... (código de equipar existente, mantenha igual) ...
             const slot = dbItem.slot;
             const currentEquippedId = socket.equipment[slot];
             socket.equipment[slot] = item.id;
@@ -609,11 +610,30 @@ io.on('connection', (socket) => {
             sendInventoryUpdate(socket);
         }
         else if (dbItem.type === ITEM_TYPES.CONSUMABLE) {
-            if (dbItem.effect.hp) socket.stats.hp = Math.min(socket.stats.maxHp, socket.stats.hp + dbItem.effect.hp);
-            if (dbItem.effect.mp) socket.stats.mp = Math.min(socket.stats.maxMp, socket.stats.mp + dbItem.effect.mp);
+            // --- MODIFICAÇÃO PARA EFEITOS VISUAIS ---
+            let vfxType = null;
+
+            if (dbItem.effect.hp) {
+                socket.stats.hp = Math.min(socket.stats.maxHp, socket.stats.hp + dbItem.effect.hp);
+                vfxType = 'POTION_HP'; // Identificador do efeito
+            }
+            if (dbItem.effect.mp) {
+                socket.stats.mp = Math.min(socket.stats.maxMp, socket.stats.mp + dbItem.effect.mp);
+                vfxType = 'POTION_MP';
+            }
+            
             item.qtd--;
             if (item.qtd <= 0) socket.inventory.splice(slotIndex, 1);
             sendInventoryUpdate(socket);
+
+            // AVISA TODOS NO MAPA SOBRE O EFEITO
+            if (vfxType) {
+                io.to(socket.map).emit('play_vfx', {
+                    targetId: socket.id,
+                    type: vfxType
+                });
+            }
+            // ----------------------------------------
         }
     });
 
