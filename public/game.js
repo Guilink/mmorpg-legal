@@ -76,6 +76,7 @@ let myLevel = 1, myXp = 0, myNextXp = 100, myPoints = 0;
 let myAttributes = { str: 5, agi: 5, int: 5, vit: 5 };
 
 let skillDB = {};
+let keyboardCursorPos = new THREE.Vector3();
 
 // --- JANELAS UI ---
 window.toggleForms = toggleForms;
@@ -148,63 +149,8 @@ window.addEventListener('mousedown', (e) => {
                 if (intersects.length > 0) targetPoint = intersects[0].point; 
             }
             
-            if (targetPoint) {
-                // 1. Verifica Cooldown Local
-                const now = Date.now();
-                if (localCooldowns[pendingSkill.id] && now < localCooldowns[pendingSkill.id]) {
-                    addLogMessage('SISTEMA', 'Habilidade em recarga.', 'system');
-                    return; 
-                }
-
-                // 2. Verifica Mana Local
-                if (myStats.mp < pendingSkill.manaCost) {
-                    addLogMessage('SISTEMA', 'Mana insuficiente.', 'system');
-                    return; 
-                }
-
-                // 3. Valida Distância (A CORREÇÃO ESTÁ AQUI)
-                // Usamos a função nativa do Three.js para calcular a distância
-                const dist = myPlayer.position.distanceTo(targetPoint);
-                
-                // Usamos a mesma tolerância do servidor (+2.0)
-                if (dist > pendingSkill.range + 2.0) {
-                    addLogMessage('SISTEMA', 'Área muito distante.', 'system');
-                    // IMPORTANTE: O return aqui impede o envio do socket e o início do cooldown visual
-                    return; 
-                }
-
-                // --- EXECUÇÃO (Se passou nas validações acima) ---
-
-                // Vira o personagem
-                const dx = targetPoint.x - myPlayer.position.x;
-                const dz = targetPoint.z - myPlayer.position.z;
-                myPlayer.rotation.y = Math.atan2(dx, dz);
-                socket.emit('player_update', { position: myPlayer.position, rotation: myPlayer.rotation.y, animation: 'IDLE' });
-
-                // Envia comando
-                socket.emit('use_skill', { 
-                    skillId: pendingSkill.id, targetId: null, x: targetPoint.x, z: targetPoint.z 
-                });
-
-                // Inicia Cooldown Visual
-                const skillId = pendingSkill.id;
-                const skillCd = pendingSkill.cooldown;
-                const castTime = pendingSkill.castTime;
-
-                if (castTime > 0) {
-                    if (castingTimer) clearTimeout(castingTimer);
-                    castingTimer = setTimeout(() => {
-                        startCooldownUI(skillId, skillCd);
-                        localCooldowns[skillId] = Date.now() + skillCd;
-                        castingTimer = null;
-                    }, castTime);
-                } else {
-                    startCooldownUI(skillId, skillCd);
-                    localCooldowns[skillId] = Date.now() + skillCd;
-                }
-
-                pendingSkill = null;
-                AreaCursor.setVisible(false);
+if (targetPoint) {
+                executePendingSkill(targetPoint);
             }
         }
         return; // Impede clicar em monstros/andar enquanto mira
@@ -252,7 +198,7 @@ window.addEventListener('mousedown', (e) => {
 });
 
 window.addEventListener('mousemove', (e) => {
-    if (!pendingSkill) return; // Só calcula se estiver mirando
+    if (!pendingSkill || keys['shift']) return; // SE o Shift estiver apertado, o mouse NÃO controla o cursor
 
     mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
@@ -325,6 +271,7 @@ socket.on('inventory_update', (data) => {
 });
 
 socket.on('map_changed', (data) => { 
+    cancelAreaTargeting();
     currentTargetId = null; 
     if(targetRing) targetRing.visible = false;
     loadMap(data.mapConfig, data.playerData, data.mapPlayers, data.mapMonsters); 
@@ -543,13 +490,15 @@ socket.on('play_vfx', (data) => {
 
     if (pos) {
         if (data.type === 'METEOR_EXPLOSION') {
-            // Efeito maior e vermelho/laranja
-            ParticleManager.spawnBurst(scene, pos, 0xff4400, 30); 
-        } else {
-            let color = 0xffffff; 
-            if (data.type === 'POTION_HP') color = 0xff0000; 
-            if (data.type === 'POTION_MP') color = 0x0000ff; 
-            ParticleManager.spawnBurst(scene, pos, color, 10);
+            ParticleManager.spawnMeteorShower(scene, pos.x, pos.z);
+        } 
+        else if (data.type === 'POTION_HP') {
+            // NOVO: Usa o efeito suave
+            ParticleManager.spawnHealEffect(scene, pos, 0xff0000); 
+        }
+        else if (data.type === 'POTION_MP') {
+            // NOVO: Usa o efeito suave azul
+            ParticleManager.spawnHealEffect(scene, pos, 0x0000ff);
         }
     }
 });
@@ -636,6 +585,7 @@ function initEngine() {
         const slotData = getHotkeyItem(slotIndex);
         if (!slotData) return; 
 
+        cancelAreaTargeting(); // Cancela o targeting de área se estiver ativo
         // --- USO DE ITEM ---
         if (slotData.type === 'ITEM') {
             const inventoryIndex = myInventory.findIndex(slot => slot.id === slotData.id);
@@ -678,12 +628,17 @@ function initEngine() {
             }
 
             // 4. PREPARAÇÃO DE ÁREA (Meteoro) - Lógica separada
-            if (skill.type === 'AREA') {
-                pendingSkill = skill;
-                AreaCursor.setVisible(true, skill.radius);
-                addLogMessage('SISTEMA', 'Selecione a área.', 'system');
-                return; 
-            }
+        if (skill.type === 'AREA') {
+            pendingSkill = skill;
+            // Inicializa cursor nos pés do jogador
+            keyboardCursorPos.copy(myPlayer.position); 
+            
+            AreaCursor.setVisible(true, skill.radius);
+            AreaCursor.updatePosition(keyboardCursorPos); // Atualiza visual na hora
+            
+            addLogMessage('SISTEMA', 'Selecione a área.', 'system');
+            return; 
+        }
 
             // --- CORREÇÃO ROBUSTA AQUI: VALIDAÇÃO PRÉVIA DO CLIENTE ---
             // Antes de enviar ou gastar cooldown, verificamos se é possível usar a skill.
@@ -807,7 +762,14 @@ function initEngine() {
         (keyNumber) => window.triggerHotkey(keyNumber - 1),
         () => selectNextTarget(),
         () => window.toggleSkills() // Tecla S
-    );        
+    );
+    
+    document.addEventListener('keyup', (e) => {
+        if (e.key === 'Shift' && pendingSkill) {
+            // Dispara onde o cursor (teclado ou mouse) estiver agora
+            executePendingSkill(keyboardCursorPos);
+        }
+    });    
 
     window.addEventListener('resize', () => { 
         if(!camera || !renderer) return;
@@ -962,6 +924,7 @@ function isTargetInFront(targetObj) {
 
 function performAttack() {
     if(getIsChatActive() || isSitting || !myPlayer) return;
+    cancelAreaTargeting(); // Cancela o targeting de área se estiver ativo
 
     let weaponId = myEquipment.weapon;
     let weaponConfig = weaponId ? itemDB[weaponId] : null;
@@ -1239,6 +1202,70 @@ function checkCollision(position, direction, distance) {
     return (intersects.length > 0 && intersects[0].distance < distance);
 }
 
+// Função para cancelar o modo de mira (Area Skill)
+function cancelAreaTargeting() {
+    if (pendingSkill) {
+        pendingSkill = null;
+        AreaCursor.setVisible(false);
+        // Opcional: Feedback no chat
+        // addLogMessage('SISTEMA', 'Mira cancelada.', 'system'); 
+    }
+}
+
+// Função auxiliar para disparar a skill de área (usada por Mouse e Teclado)
+function executePendingSkill(targetPoint) {
+    if (!pendingSkill || !targetPoint) return;
+
+    // 1. Verifica Cooldown Local
+    const now = Date.now();
+    if (localCooldowns[pendingSkill.id] && now < localCooldowns[pendingSkill.id]) {
+        addLogMessage('SISTEMA', 'Habilidade em recarga.', 'system');
+        return; 
+    }
+
+    // 2. Verifica Mana Local
+    if (myStats.mp < pendingSkill.manaCost) {
+        addLogMessage('SISTEMA', 'Mana insuficiente.', 'system');
+        return; 
+    }
+
+    // 3. Valida Distância
+    const dist = myPlayer.position.distanceTo(targetPoint);
+    if (dist > pendingSkill.range + 2.0) {
+        addLogMessage('SISTEMA', 'Área muito distante.', 'system');
+        return; 
+    }
+
+    // --- EXECUÇÃO ---
+    const dx = targetPoint.x - myPlayer.position.x;
+    const dz = targetPoint.z - myPlayer.position.z;
+    myPlayer.rotation.y = Math.atan2(dx, dz);
+    socket.emit('player_update', { position: myPlayer.position, rotation: myPlayer.rotation.y, animation: 'IDLE' });
+
+    socket.emit('use_skill', { 
+        skillId: pendingSkill.id, targetId: null, x: targetPoint.x, z: targetPoint.z 
+    });
+
+    const skillId = pendingSkill.id;
+    const skillCd = pendingSkill.cooldown;
+    const castTime = pendingSkill.castTime;
+
+    if (castTime > 0) {
+        if (castingTimer) clearTimeout(castingTimer);
+        castingTimer = setTimeout(() => {
+            startCooldownUI(skillId, skillCd);
+            localCooldowns[skillId] = Date.now() + skillCd;
+            castingTimer = null;
+        }, castTime);
+    } else {
+        startCooldownUI(skillId, skillCd);
+        localCooldowns[skillId] = Date.now() + skillCd;
+    }
+
+    pendingSkill = null;
+    AreaCursor.setVisible(false);
+}
+
 function animate() {
     requestAnimationFrame(animate);
     const now = Date.now(); 
@@ -1277,19 +1304,36 @@ function animate() {
         }
 
         let isMoving = false;
-        if(!isChatActive && !isSitting && !isAttacking) { 
+if(!isChatActive && !isSitting && !isAttacking) { 
             tempVector.set(0, 0, 0);
             if(keys['w']) tempVector.z -= 1; if(keys['s']) tempVector.z += 1;
             if(keys['a']) tempVector.x -= 1; if(keys['d']) tempVector.x += 1;
 
-            if(tempVector.lengthSq() > 0) {
-                if (castingTimer) {
-                    clearTimeout(castingTimer);
-                    castingTimer = null;
-                }                
+            // --- LÓGICA NOVA: CONTROLE DE CURSOR DE ÁREA ---
+            if (pendingSkill && keys['shift']) {
+                // Se tem input de movimento, move o CURSOR, não o player
+                if(tempVector.lengthSq() > 0) {
+                    tempVector.normalize();
+                    const cursorSpeed = 15.0; // Velocidade do cursor
+                    
+                    keyboardCursorPos.x += tempVector.x * cursorSpeed * delta;
+                    keyboardCursorPos.z += tempVector.z * cursorSpeed * delta;
+                    
+                    // Atualiza visualmente o anel azul
+                    AreaCursor.updatePosition(keyboardCursorPos);
+                    
+                    // Atualiza a animação do player para IDLE (já que ele parou de correr para mirar)
+                    if(myPlayer.userData.current !== 'IDLE') playAnim(myPlayer, 'IDLE');
+                }
+            } 
+            // --- MOVIMENTO NORMAL DO JOGADOR ---
+            else if(tempVector.lengthSq() > 0) {
+                if (castingTimer) { clearTimeout(castingTimer); castingTimer = null; }                
+                
                 tempVector.normalize();
                 const isRunning = keys['shift']; 
                 const speed = isRunning ? CONFIG.runSpeed : CONFIG.moveSpeed;
+                // ... (o resto do código de movimento original continua aqui igualzinho)
                 const moveDistance = speed * delta; 
                 const worldDir = tempVector.clone(); 
                 
@@ -1314,6 +1358,17 @@ function animate() {
                 playAnim(myPlayer, isRunning ? 'RUN' : 'WALK'); 
             } else {
                 if(myPlayer.userData.current !== 'ATTACK' && myPlayer.userData.current !== 'SIT') playAnim(myPlayer, 'IDLE');
+            }
+            
+            // IMPORTANTE: Se estiver usando o mouse para mirar (sem shift), atualizamos a posição do cursor lógico
+            // para garantir que se apertar Shift depois, ele continue de onde o mouse estava.
+            if (pendingSkill && !keys['shift']) {
+                // Precisamos atualizar o keyboardCursorPos para onde o mouse está apontando
+                 raycaster.setFromCamera(mouse, camera); 
+                 const intersects = raycaster.intersectObjects(environmentLayer.children, true); 
+                 if (intersects.length > 0) {
+                     keyboardCursorPos.copy(intersects[0].point);
+                 }
             }
         }
         tempOrigin.copy(myPlayer.position).add(new THREE.Vector3(0, 6, 7)); 

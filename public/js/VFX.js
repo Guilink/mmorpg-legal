@@ -335,14 +335,38 @@ function createParticleTexture() {
 
 const particleTexture = createParticleTexture(); // Cache da textura
 
-// ... (Mantenha a função createParticleTexture e a const particleTexture no topo igual) ...
+// Use a textura de partícula que já criamos antes (particleTexture)
+// Se não tiver a const particleTexture acessível, certifique-se de que ela está definida no escopo global do módulo VFX.js
 
+// --- PARTICLE MANAGER (Efeitos de Partículas) ---
 export const ParticleManager = {
     particles: [],
     emitters: [], 
+    meteors: [], 
 
-    // Explosão (Poções - Mantido igual)
-    spawnBurst: (scene, position, color, count = 20) => {
+    // 1. EFEITO DE CURA (Bolhas suaves)
+    spawnHealEffect: (scene, position, color) => {
+        const material = new THREE.SpriteMaterial({ 
+            map: particleTexture, color: color, transparent: true, 
+            opacity: 1.0, depthWrite: false, blending: THREE.AdditiveBlending 
+        });
+
+        for (let i = 0; i < 15; i++) {
+            const sprite = new THREE.Sprite(material.clone());
+            sprite.position.copy(position);
+            sprite.position.x += (Math.random() - 0.5) * 0.5;
+            sprite.position.y += (Math.random() * 1.0);
+            sprite.position.z += (Math.random() - 0.5) * 0.5;
+            const scale = 0.2 + Math.random() * 0.3;
+            sprite.scale.set(scale, scale, 1);
+            sprite.userData = { behavior: 'FLOAT_UP', velocity: new THREE.Vector3((Math.random()-0.5)*0.2, (Math.random()*1.5)+0.5, (Math.random()-0.5)*0.2), life: 1.0+Math.random()*0.5, maxLife: 1.5 };
+            scene.add(sprite);
+            ParticleManager.particles.push(sprite);
+        }
+    },
+
+    // 2. EFEITO DE EXPLOSÃO (Genérico)
+    spawnExplosion: (scene, position, color, count = 20, sizeScale = 1.0) => {
         const material = new THREE.SpriteMaterial({ 
             map: particleTexture, color: color, transparent: true, 
             opacity: 1.0, depthWrite: false, blending: THREE.AdditiveBlending 
@@ -351,150 +375,152 @@ export const ParticleManager = {
         for (let i = 0; i < count; i++) {
             const sprite = new THREE.Sprite(material.clone());
             sprite.position.copy(position);
-            sprite.position.x += (Math.random() - 0.5) * 0.5;
-            sprite.position.y += (Math.random() * 1.0) + 0.5;
-            sprite.position.z += (Math.random() - 0.5) * 0.5;
-            
-            const scale = 0.3 + Math.random() * 0.3;
+            const spread = 0.5 * sizeScale;
+            sprite.position.x += (Math.random() - 0.5) * spread;
+            sprite.position.y += (Math.random() * 0.5) * sizeScale;
+            sprite.position.z += (Math.random() - 0.5) * spread;
+            const scale = (0.3 + Math.random() * 0.3) * sizeScale;
             sprite.scale.set(scale, scale, 1);
 
             sprite.userData = {
-                behavior: 'PHYSICS',
+                behavior: 'HEAVY_PHYSICS',
                 velocity: new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.5,
-                    (Math.random() * 1.0) + 0.5,
-                    (Math.random() - 0.5) * 0.5
+                    (Math.random() - 0.5) * 6.0 * sizeScale,
+                    (Math.random() * 3.0) * sizeScale,
+                    (Math.random() - 0.5) * 6.0 * sizeScale
                 ),
-                life: 1.0 + Math.random() * 0.5,
-                maxLife: 1.5
+                life: 0.6 + Math.random() * 0.4,
+                maxLife: 1.0
             };
             scene.add(sprite);
             ParticleManager.particles.push(sprite);
         }
     },
 
-    // --- PORTAL DE CHÃO (VÓRTICE SUAVE) ---
+    // 3. EFEITO DE CHUVA DE METEOROS (3 Pequenos caindo)
+    spawnMeteorShower: (scene, centerX, centerZ) => {
+        const materialTemplate = new THREE.SpriteMaterial({ 
+            map: particleTexture, color: 0xff4400, transparent: true, blending: THREE.AdditiveBlending 
+        });
+
+        // Loop para criar 3 meteoros
+        for(let i = 0; i < 3; i++) {
+            const sprite = new THREE.Sprite(materialTemplate.clone());
+            
+            // Reduzi o tamanho de 2.5 para 1.5 (são menores agora)
+            sprite.scale.set(1.5, 1.5, 1.0);
+            
+            // Espalhamento aleatório (Raio de 2.5 metros ao redor do clique)
+            const offsetX = (Math.random() - 0.5) * 2.5;
+            const offsetZ = (Math.random() - 0.5) * 2.5;
+
+            // TRUQUE DA CHUVA: Altura inicial variável!
+            // O primeiro cai de 15m, o segundo de 18m, o terceiro de 22m...
+            // Isso cria o delay visual natural.
+            const startY = 15.0 + (Math.random() * 10.0); 
+
+            sprite.position.set(centerX + offsetX, startY, centerZ + offsetZ);
+            
+            sprite.userData = { 
+                velocityY: -25.0, // Velocidade de queda
+                targetY: 0.1,
+                explosionScale: 1.0 // Explosão menor (antes era 1.5)
+            };
+
+            scene.add(sprite);
+            ParticleManager.meteors.push(sprite);
+        }
+    },
+
+    // 4. PORTAIS
     createPortal: (scene, x, z) => {
-        const emitter = {
-            scene: scene,
-            center: new THREE.Vector3(x, 0.05, z), // Bem rente ao chão
-            rate: 0.08, // Levemente menos partículas para não poluir
-            timer: 0,
-            color: 0x00ffff // Ciano
-        };
+        const emitter = { scene: scene, center: new THREE.Vector3(x, 0.05, z), rate: 0.08, timer: 0, color: 0x00ffff };
         ParticleManager.emitters.push(emitter);
     },
 
     update: (delta, scene) => {
-        // 1. Atualiza Emissores
+        // --- ATUALIZA METEOROS ---
+        for (let i = ParticleManager.meteors.length - 1; i >= 0; i--) {
+            const m = ParticleManager.meteors[i];
+            m.position.y += m.userData.velocityY * delta;
+            
+            // Rastro (Trail)
+            if (Math.random() < 0.6) {
+                const trail = new THREE.Sprite(m.material.clone());
+                trail.scale.set(0.6, 0.6, 1.0); // Rastro menor também
+                trail.position.copy(m.position);
+                trail.position.y += 0.5;
+                trail.userData = { behavior: 'HEAVY_PHYSICS', velocity: new THREE.Vector3((Math.random()-0.5), 1, (Math.random()-0.5)), life: 0.2, maxLife: 0.2 };
+                scene.add(trail);
+                ParticleManager.particles.push(trail);
+            }
+
+            // Impacto no Chão
+            if (m.position.y <= m.userData.targetY) {
+                // Usa o scale definido na criação (agora 1.0 para ser médio)
+                ParticleManager.spawnExplosion(scene, m.position, 0xff4400, 25, m.userData.explosionScale);
+                
+                scene.remove(m); m.material.dispose();
+                ParticleManager.meteors.splice(i, 1);
+            }
+        }
+
+        // --- ATUALIZA EMISSORES ---
         ParticleManager.emitters.forEach(e => {
             e.timer += delta;
             if (e.timer >= e.rate) {
                 e.timer = 0;
-                
-                const material = new THREE.SpriteMaterial({ 
-                    map: particleTexture, 
-                    color: e.color, 
-                    transparent: true, 
-                    opacity: 0.0, 
-                    depthWrite: false, 
-                    blending: THREE.AdditiveBlending 
-                });
-
-                const sprite = new THREE.Sprite(material);
-                
-                // AJUSTE 1: Raio inicial um pouco menor (0.9)
-                const angle = Math.random() * Math.PI * 2;
-                const radius = 0.7; 
-
-                sprite.position.set(
-                    e.center.x + Math.cos(angle) * radius,
-                    0.05, // Nasce no chão
-                    e.center.z + Math.sin(angle) * radius
-                );
-
-                // Tamanho das partículas um pouco menor
-                const scale = 0.10 + Math.random() * 0.25;
-                sprite.scale.set(scale, scale, 1);
-
-                sprite.userData = {
-                    behavior: 'VORTEX',
-                    center: e.center.clone(),
-                    angle: angle,
-                    radius: radius,
-                    
-                    // --- AQUI ESTÃO AS MUDANÇAS CHAVE ---
-                    // Velocidade de subida MUITO BAIXA (0.1 a 0.3) -> Fica no chão
-                    speedY: 0.1 + Math.random() * 0.2, 
-                    
-                    // Rotação mais calma (1.0 a 1.5) -> Antes era 2.0+
-                    angularSpeed: 0.15 + Math.random() * 0.3, 
-                    
-                    // Vida curta (1.2s) -> Morre antes de subir muito
-                    life: 1.2, 
-                    maxLife: 1.2
-                };
-
+                const mat = new THREE.SpriteMaterial({ map: particleTexture, color: e.color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+                const sprite = new THREE.Sprite(mat);
+                const angle = Math.random() * Math.PI * 2; const radius = 0.7; 
+                sprite.position.set(e.center.x + Math.cos(angle) * radius, 0.05, e.center.z + Math.sin(angle) * radius);
+                const scale = 0.1 + Math.random() * 0.25; sprite.scale.set(scale, scale, 1);
+                sprite.userData = { behavior: 'VORTEX', center: e.center.clone(), angle: angle, radius: radius, speedY: 0.1 + Math.random() * 0.2, angularSpeed: 0.15 + Math.random()*0.3, life: 1.2, maxLife: 1.2 };
                 e.scene.add(sprite);
                 ParticleManager.particles.push(sprite);
             }
         });
 
-        // 2. Atualiza Partículas
+        // --- ATUALIZA PARTÍCULAS GERAIS ---
         for (let i = ParticleManager.particles.length - 1; i >= 0; i--) {
             const p = ParticleManager.particles[i];
             const data = p.userData;
 
             if (data.behavior === 'VORTEX') {
-                data.life -= delta;
-                
-                // Sobe devagar
-                p.position.y += data.speedY * delta;
-                
-                // Gira suavemente
-                data.angle += data.angularSpeed * delta;
-                
-                // Fecha o raio BEM DEVAGAR (para manter o formato de disco/pizza)
-                data.radius -= 0.15 * delta; // Antes era 0.3
-                if (data.radius < 0) data.radius = 0;
-
+                data.life -= delta; p.position.y += data.speedY * delta;
+                data.angle += data.angularSpeed * delta; data.radius = Math.max(0, data.radius - 0.15 * delta);
                 p.position.x = data.center.x + Math.cos(data.angle) * data.radius;
                 p.position.z = data.center.z + Math.sin(data.angle) * data.radius;
-
-                // Opacidade: Fade in rápido, Fade out lento
-                const lifePct = data.life / data.maxLife;
-                if (lifePct > 0.8) {
-                    p.material.opacity = (1.0 - lifePct) * 5.0; 
-                } else {
-                    p.material.opacity = lifePct * 0.8; // Max opacidade 0.8 (mais sutil)
-                }
-
-            } else {
-                // Física normal (Poções)
+                const pct = data.life / data.maxLife; p.material.opacity = pct > 0.8 ? (1-pct)*5 : pct*0.8;
+            } 
+            else if (data.behavior === 'FLOAT_UP') {
                 p.position.addScaledVector(data.velocity, delta);
-                data.velocity.y += 0.5 * delta;
+                data.life -= delta;
+                p.material.opacity = (data.life / data.maxLife);
+            }
+            else if (data.behavior === 'HEAVY_PHYSICS') {
+                p.position.addScaledVector(data.velocity, delta);
+                data.velocity.y -= 6.0 * delta; 
                 data.life -= delta;
                 p.material.opacity = (data.life / data.maxLife);
             }
 
             if (data.life <= 0) {
-                scene.remove(p);
-                p.material.dispose();
+                scene.remove(p); if(p.material) p.material.dispose();
                 ParticleManager.particles.splice(i, 1);
             }
         }
     },
-    
-    clearAll: (scene) => {
-        ParticleManager.particles.forEach(p => {
-             scene.remove(p);
-             p.material.dispose();
-        });
+    clearAll: (scene) => { 
+        ParticleManager.particles.forEach(p => { scene.remove(p); if(p.material) p.material.dispose(); });
+        ParticleManager.meteors.forEach(m => { scene.remove(m); if(m.material) m.material.dispose(); });
         ParticleManager.particles = [];
+        ParticleManager.meteors = [];
         ParticleManager.emitters = [];
     }
 };
 
+// --- PROJECTILE MANAGER (Projéteis com Partículas) ---
 let arrowTemplate = null;
 
 export const ProjectileManager = {
@@ -504,44 +530,44 @@ export const ProjectileManager = {
         loader.load('assets/arrow.glb', (gltf) => {
             const wrapper = new THREE.Group();
             const model = gltf.scene;
-            model.scale.set(1.1, 1.1, 1.1); 
-            model.rotation.x = -Math.PI / 2; // Ajuste para a flecha ficar reta
+            model.scale.set(1.1, 1.1, 1.1); model.rotation.x = -Math.PI / 2;
             wrapper.add(model);
             arrowTemplate = wrapper;
-            console.log("Assets de flecha carregados.");
         });
     },
 
     spawn: (scene, startObj, targetObj, type) => {
-        // Se não tiver template (ainda carregando) ou objetos inválidos, sai
         if (!startObj || !targetObj) return;
 
-        const projectileType = type || 'ARROW'; // Fallback para flecha
+        const projectileType = type || 'ARROW';
         let projectile;
 
         if (projectileType === 'FIREBALL') {
-            // Cria esfera laranja para bola de fogo
-            const geo = new THREE.SphereGeometry(0.3, 8, 8);
-            const mat = new THREE.MeshBasicMaterial({ color: 0xff4400 });
-            projectile = new THREE.Mesh(geo, mat);
+            // FIREBALL AGORA É UM SPRITE (Partícula), NÃO UMA ESFERA
+            const material = new THREE.SpriteMaterial({ 
+                map: particleTexture, 
+                color: 0xffaa00, // Amarelo/Laranja
+                transparent: true, 
+                blending: THREE.AdditiveBlending 
+            });
+            projectile = new THREE.Sprite(material);
+            projectile.scale.set(0.8, 0.8, 1.0);
         } else {
-            // Flecha Padrão
+            // FLECHA (Model 3D)
             if (!arrowTemplate) return; 
             projectile = arrowTemplate.clone();
         }
 
-        // Posição inicial
         projectile.position.copy(startObj.position);
         projectile.position.y += 1.2; 
 
-        // Salva posição inicial do alvo para caso ele morra
         const initialTargetPos = targetObj.position.clone();
         initialTargetPos.y += 1.0;
 
-        // Velocidade diferente por tipo
         const speed = (projectileType === 'FIREBALL') ? 12.0 : 20.0;
 
         projectile.userData = {
+            type: projectileType, // Guardamos o tipo para saber se gera rastro
             target: targetObj,       
             lastPos: initialTargetPos, 
             speed: speed
@@ -555,34 +581,64 @@ export const ProjectileManager = {
         for (let i = ProjectileManager.projectiles.length - 1; i >= 0; i--) {
             const proj = ProjectileManager.projectiles[i];
             const data = proj.userData;
-            let targetPos = null;
 
-            // Se o alvo existe na cena
+            // --- LÓGICA DE RASTRO (FIREBALL) ---
+            if (data.type === 'FIREBALL') {
+                // Gera partículas enquanto voa
+                if (Math.random() < 0.8) { // 80% de chance por frame (rastro denso)
+                    const trailMat = new THREE.SpriteMaterial({ 
+                        map: particleTexture, color: 0xff4400, // Rastro mais vermelho
+                        transparent: true, blending: THREE.AdditiveBlending 
+                    });
+                    const trail = new THREE.Sprite(trailMat);
+                    trail.position.copy(proj.position);
+                    // Leve aleatoriedade
+                    trail.position.x += (Math.random()-0.5)*0.2;
+                    trail.position.y += (Math.random()-0.5)*0.2;
+                    trail.position.z += (Math.random()-0.5)*0.2;
+                    
+                    const scale = 0.4 + Math.random() * 0.3;
+                    trail.scale.set(scale, scale, 1);
+                    
+                    // Adiciona ao sistema de partículas como 'HEAVY_PHYSICS' ou 'FLOAT_UP' (vamos usar float up mas rapido)
+                    trail.userData = { 
+                        behavior: 'FLOAT_UP', // Flutua e some
+                        velocity: new THREE.Vector3(0, 0, 0), // Fica parado onde nasceu
+                        life: 0.3, // Vida curta
+                        maxLife: 0.3 
+                    };
+                    scene.add(trail);
+                    ParticleManager.particles.push(trail);
+                }
+            }
+            // -----------------------------------
+
+            let targetPos = null;
             if (data.target && data.target.parent) {
                 targetPos = data.target.position.clone();
                 targetPos.y += 1.0; 
                 data.lastPos.copy(targetPos); 
             } else {
-                // Alvo morreu, usa última posição
                 targetPos = data.lastPos;
             }
 
             const dist = proj.position.distanceTo(targetPos);
 
             if (dist < 0.5) {
+                // IMPACTO
+                if (data.type === 'FIREBALL') {
+                    // Explosão visual ao acertar
+                    ParticleManager.spawnExplosion(scene, proj.position, 0xffaa00, 10, 0.5);
+                }
+
                 scene.remove(proj);
-                // Limpeza de memória se for geometria criada na hora
-                if (proj.geometry) proj.geometry.dispose(); 
                 if (proj.material) proj.material.dispose();
-                
                 ProjectileManager.projectiles.splice(i, 1);
                 continue;
             }
 
             const direction = new THREE.Vector3().subVectors(targetPos, proj.position).normalize();
-            
-            // LookAt funciona bem para flecha, mas para esfera é indiferente (mas não atrapalha)
-            proj.lookAt(targetPos);
+            if (data.type !== 'FIREBALL') proj.lookAt(targetPos); // Flecha aponta, Sprite não precisa
             proj.position.add(direction.multiplyScalar(data.speed * delta));
         }
     }
@@ -593,20 +649,24 @@ let areaCursorMesh = null;
 
 export const AreaCursor = {
     create: (scene) => {
-        // Cria um anel para indicar a área
-        const geometry = new THREE.RingGeometry(0.1, 1.0, 32); 
+        // Carrega a imagem do círculo mágico
+        const texture = new THREE.TextureLoader().load('assets/magic_circle.png');
+        
+        // PlaneGeometry (1, 1) é um quadrado base. A escala será controlada pelo raio da skill.
+        const geometry = new THREE.PlaneGeometry(1, 1); 
+        
         const material = new THREE.MeshBasicMaterial({ 
-            color: 0x00aaff, // Azul
-            transparent: true, 
-            opacity: 0.5, 
+            map: texture,       // Usa sua imagem
+            transparent: true,  // Permite transparência do PNG
+            opacity: 0.8,       // Leve transparência geral
             side: THREE.DoubleSide,
-            depthTest: false, // Desenha sempre por cima do chão
+            depthTest: false,   // Desenha sempre por cima do chão
             depthWrite: false
         });
         
         areaCursorMesh = new THREE.Mesh(geometry, material);
-        areaCursorMesh.rotation.x = -Math.PI / 2; // Deitado
-        areaCursorMesh.position.set(0, 0.1, 0);   // Pouco acima do chão
+        areaCursorMesh.rotation.x = -Math.PI / 2; // Deitado no chão
+        areaCursorMesh.position.set(0, 0.1, 0);   
         areaCursorMesh.visible = false;
         
         // RenderOrder alto para aparecer sobre o terreno
@@ -619,15 +679,17 @@ export const AreaCursor = {
     updatePosition: (position) => {
         if (areaCursorMesh && position) {
             areaCursorMesh.position.set(position.x, 0.1, position.z);
+            // Efeito extra: Gira o círculo devagarzinho para ficar estiloso
+            areaCursorMesh.rotation.z += 0.02; 
         }
     },
 
     setVisible: (visible, radius = 3.0) => {
         if (areaCursorMesh) {
             areaCursorMesh.visible = visible;
-            // O RingGeometry base tem raio externo 1.0. 
-            // Para ter raio X, escalamos por X.
-            areaCursorMesh.scale.set(radius, radius, 1);
+            // Ajustamos a escala. Como a geometria é 1x1, multiplicar por (radius * 2) dá o diâmetro correto.
+            const size = radius * 2;
+            areaCursorMesh.scale.set(size, size, 1);
         }
     },
     
