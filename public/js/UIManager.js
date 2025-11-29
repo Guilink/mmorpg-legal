@@ -61,6 +61,8 @@ let tempAttributes = {};
 let tempPoints = 0;
 let realAttributesRef = {};
 let equipmentBonuses = { atk: 0, def: 0, matk: 0, eva: 0 };
+let attrBonuses = { str: 0, agi: 0, int: 0, vit: 0 };
+let currentInventoryRef = [];
 let hotbarState = [null, null, null, null, null, null];
 
 let dragData = {
@@ -127,14 +129,31 @@ export function updateLoadingBar(percent) {
 }
 
 // --- STATUS ---
-export function setupStatusWindowData(currentAttributes, currentPoints, currentRealStats) {
-    tempAttributes = { ...currentAttributes };
+// Função atualizada para permitir recalcular bônus sem resetar os pontos pendentes
+export function setupStatusWindowData(currentAttributes, currentPoints, currentRealStats, onlyUpdateBonuses = false) {
+    if (!onlyUpdateBonuses) {
+        tempAttributes = { ...currentAttributes };
+        tempPoints = currentPoints;
+    }
+    
     realAttributesRef = { ...currentAttributes };
-    tempPoints = currentPoints;
+
+    // 1. CÁLCULO DOS BÔNUS DE ATRIBUTOS (STR, AGI...)
+    // O servidor manda 'totalAttributes' dentro de 'currentRealStats' (que é o myStats).
+    // Se não tiver (login inicial), assume que é igual ao base.
+    const totalAttrs = currentRealStats.totalAttributes || currentAttributes;
+    
+    attrBonuses.str = totalAttrs.str - currentAttributes.str;
+    attrBonuses.agi = totalAttrs.agi - currentAttributes.agi;
+    attrBonuses.int = totalAttrs.int - currentAttributes.int;
+    attrBonuses.vit = totalAttrs.vit - currentAttributes.vit;
+
+    // 2. CÁLCULO DOS STATUS DERIVADOS (ATK, DEF...)
     const baseAtk = 10 + (currentAttributes.str * 2);
     const baseDef = Math.floor(currentAttributes.vit * 1);
     const baseMatk = Math.floor(currentAttributes.int * 2);
     const baseEva = Math.floor((currentAttributes.str * 0.1) + (currentAttributes.agi * 0.5));
+
     equipmentBonuses.atk = (currentRealStats.atk || baseAtk) - baseAtk;
     equipmentBonuses.def = (currentRealStats.def || baseDef) - baseDef;
     equipmentBonuses.matk = (currentRealStats.matk || baseMatk) - baseMatk;
@@ -147,21 +166,47 @@ export function toggleStatusWindow() {
 }
 
 export function refreshStatusWindow() {
+    // --- PARTE 1: ATRIBUTOS (FOR, AGI...) ---
     UI.valStr.textContent = tempAttributes.str;
     UI.valAgi.textContent = tempAttributes.agi;
     UI.valInt.textContent = tempAttributes.int;
     UI.valVit.textContent = tempAttributes.vit;
+    
+    // Função auxiliar para preencher o texto (+X)
+    const setBonusText = (id, val) => {
+        const el = document.getElementById(id);
+        if(el) el.textContent = val > 0 ? ` +${val}` : '';
+    };
+
+    // Preenche bônus dos atributos primários
+    setBonusText('bon-str', attrBonuses.str);
+    setBonusText('bon-agi', attrBonuses.agi);
+    setBonusText('bon-int', attrBonuses.int);
+    setBonusText('bon-vit', attrBonuses.vit);
+
     UI.stPoints.textContent = tempPoints;
+
+    // --- PARTE 2: STATUS DERIVADOS (ATQ, DEF...) ---
+    
+    // Calcula APENAS O BASE (Baseado nos seus pontos)
     const newBaseAtk = 10 + (tempAttributes.str * 2);
-    UI.dAtk.textContent = newBaseAtk + equipmentBonuses.atk;
     const newBaseDef = Math.floor(tempAttributes.vit * 1);
-    UI.dDef.textContent = newBaseDef + equipmentBonuses.def;
     const newBaseMatk = Math.floor(tempAttributes.int * 2);
-    UI.dMatk.textContent = newBaseMatk + equipmentBonuses.matk;
     const newBaseEva = Math.floor((tempAttributes.str * 0.1) + (tempAttributes.agi * 0.5));
-    UI.dEva.textContent = newBaseEva + equipmentBonuses.eva;
     const aspd = Math.max(500, 2000 - (tempAttributes.agi * 20));
+
+    // Exibe o BASE (Branco)
+    UI.dAtk.textContent = newBaseAtk;
+    UI.dDef.textContent = newBaseDef;
+    UI.dMatk.textContent = newBaseMatk;
+    UI.dEva.textContent = newBaseEva;
     UI.dSpd.textContent = aspd + 'ms';
+
+    // Exibe o BÔNUS (Amarelo) vindo dos equipamentos
+    setBonusText('bon-atk', equipmentBonuses.atk);
+    setBonusText('bon-def', equipmentBonuses.def);
+    setBonusText('bon-matk', equipmentBonuses.matk);
+    setBonusText('bon-eva', equipmentBonuses.eva);
 }
 
 export function changeAttr(type, amount) {
@@ -194,6 +239,7 @@ export function toggleSkills() {
 // --- POPULAÇÃO DE DADOS (INVENTÁRIO E SKILLS) ---
 
 UI.updateInventory = function(inventory, equipment, itemDB, skillDB) {
+    currentInventoryRef = inventory; // <--- SALVA A REFERÊNCIA AQUI
     hideTooltip();
     
     // 1. Equipamentos
@@ -311,8 +357,8 @@ document.addEventListener('mouseup', (e) => {
             } else if (dragData.type === 'SKILL') {
                 hotbarState[key] = { type: 'SKILL', id: dragData.item.id };
             }
-            
-            renderHotbarStateOnly(); // Atualiza visual
+            // CORREÇÃO: Passa o inventário salvo para desenhar a quantidade imediatamente
+            renderHotbarStateOnly(currentInventoryRef); 
         }
         else if (dragData.type === 'ITEM') {
             // Se soltou fora (chão) e for ITEM

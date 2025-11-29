@@ -434,3 +434,28 @@ body { overflow: hidden; background: #000; }
 }
 
 .hotkey-qtd { z-index: 11; }
+
+/* AJUSTE DAS LINHAS DE ATRIBUTOS */
+.attr-row { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; /* Isso força o alinhamento vertical perfeito */
+    margin-bottom: 8px;
+    height: 28px; /* Altura fixa ajuda na consistência */
+}
+
+/* TEXTO DOS BÔNUS (+X) */
+.stat-bonus {
+    color: #ffd700 !important; /* Amarelo Ouro (Força sobre o branco) */
+    font-size: 12px;
+    font-weight: bold; /* Fica mais bonito em negrito */
+    margin-left: 5px;  /* Espaço do texto principal */
+    position: relative;
+    top: 0px; /* Ajuste fino se precisar, mas com flexbox geralmente é 0 */
+}
+
+/* GARANTIR QUE OS DERIVADOS ACEITEM A COR */
+.derived-stats div {
+    display: flex;
+    align-items: center; /* Alinha texto base e bonus verticalmente */
+}

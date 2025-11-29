@@ -32,36 +32,36 @@ const WEAPON_TYPES = {
     RANGED: 'ranged'
 };
 
-// --- BANCO DE DADOS DE SKILLS (NOVO) ---
 const SKILL_DATABASE = {
     'fireball': {
         id: 'fireball', name: "Bola de Fogo", type: 'CASTING',
         castTime: 1500, cooldown: 3000, range: 15, manaCost: 10,
         damage: 40, animation: 'ATTACK',
-        icon: 'skill_fireball.png' // <--- NOVO (Crie essa imagem ou use outra de teste)
+        icon: 'skill_fireball.png',
+        projectileType: 'FIREBALL' // <--- Definido aqui agora!
     },
     'strong_slash': {
         id: 'strong_slash', name: "Golpe Feroz", type: 'MELEE',
         castTime: 0, cooldown: 5000, range: 1.3, manaCost: 5,
         damage: 30, animation: 'ATTACK',
-        icon: 'skill_slash.png' // <--- NOVO
+        icon: 'skill_slash.png'
     },
     'heal': {
         id: 'heal', name: "Cura Menor", type: 'SUPPORT',
         castTime: 1000, cooldown: 4000, range: 10, manaCost: 15,
         effect: { hp: 50 }, animation: 'IDLE',
-        icon: 'skill_heal.png' // <--- NOVO
+        icon: 'skill_heal.png'
     },
     'meteor': {
         id: 'meteor', name: "Chuva de Meteoros", type: 'AREA',
-        castTime: 2000, // 2 segundos carregando
-        cooldown: 10000, // 10 segundos de recarga
-        range: 12.0,     // Distância máxima que posso jogar (do meu pé até o centro da área)
-        radius: 3.0,     // Tamanho da explosão (4 metros de raio)
+        castTime: 2000, 
+        cooldown: 10000, 
+        range: 12.0, // Alcance de lançamento do meteoro
+        radius: 3.0, // Raio de dano do meteoro
         manaCost: 25,
-        damage: 80,      // Dano alto
-        animation: 'ATTACK', // Animação do char jogando
-        icon: 'skill_meteor.png' // Crie essa imagem na pasta icons!
+        damage: 80,
+        animation: 'ATTACK', 
+        icon: 'skill_meteor.png' 
     }    
 };
 
@@ -89,7 +89,7 @@ const ITEM_DATABASE = {
     101: { 
         id: 101, name: "Espada de Ferro", type: ITEM_TYPES.EQUIPMENT, slot: EQUIP_SLOTS.WEAPON,
         weaponType: WEAPON_TYPES.MELEE, range: 1.3,
-        icon: "sword_iron.png", description: "Lâmina afiada.",
+        icon: "sword_iron.png", description: "Lâmina afiada, feita pelo ferreiro Jhon que fica na provincia de Travolta.",
         stats: { atk: 15, str: 2 } 
     },
     // --- NOVO ITEM: ARCO ---
@@ -157,7 +157,7 @@ const MONSTER_TYPES = {
         attackSpeed: 2000, dmg: 35, xp: 120, behavior: BEHAVIOR.NEUTRAL, sightRange: 10.0          
     },
     'cogumelochefe': {
-        name: 'Mestre Cogulouco', model: 'm4_cogumelo', scale: 0.07, hp: 2000, maxHp: 2000, speed: 0.10, range: 1.3,
+        name: 'Mestre Cogulouco', model: 'm4_cogumelo', scale: 0.07, hp: 2000, maxHp: 1200, speed: 0.10, range: 1.3,
         attackSpeed: 1800, dmg: 60, xp: 300, behavior: BEHAVIOR.AGGRESSIVE, sightRange: 10.0         
     }
 };

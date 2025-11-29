@@ -37,6 +37,8 @@ let lastRenderedTargetId = null;
 let pendingSkill = null; 
 let localCooldowns = {}; // Armazena quando o cooldown de cada skill VAI ACABAR (Timestamp)
 let castingTimer = null; // Armazena o timer do client para cancelar se andar
+let WEAPON_TYPES = {}; // Constantes vindas do servidor
+let ITEM_TYPES = {};
 
 // No UIManager ou referenciando direto
 const castBarContainer = document.getElementById('cast-bar-container');
@@ -134,10 +136,8 @@ window.addEventListener('mousedown', (e) => {
             return;
         }
 
- // Botão Esquerdo: Dispara Skill de Área
+// Botão Esquerdo: Dispara Skill de Área
         if (e.button === 0) {
-            // ... (Lógica de raycast/shift igual) ...
-            // Copie a lógica de definir targetPoint que já estava lá
             let targetPoint = null;
             if (keys['shift']) { targetPoint = cursorWorldPos.clone(); } 
             else { 
@@ -156,33 +156,51 @@ window.addEventListener('mousedown', (e) => {
                     return; 
                 }
 
-                // 2. Verifica Mana Local (NOVO!)
+                // 2. Verifica Mana Local
                 if (myStats.mp < pendingSkill.manaCost) {
                     addLogMessage('SISTEMA', 'Mana insuficiente.', 'system');
-                    // Opcional: Cancelar a mira ou deixar tentar de novo?
-                    // Vamos manter a mira ativa para ele tentar quando recuperar mana, ou cancela com direito.
                     return; 
                 }
 
+                // 3. Valida Distância (A CORREÇÃO ESTÁ AQUI)
+                // Usamos a função nativa do Three.js para calcular a distância
+                const dist = myPlayer.position.distanceTo(targetPoint);
+                
+                // Usamos a mesma tolerância do servidor (+2.0)
+                if (dist > pendingSkill.range + 2.0) {
+                    addLogMessage('SISTEMA', 'Área muito distante.', 'system');
+                    // IMPORTANTE: O return aqui impede o envio do socket e o início do cooldown visual
+                    return; 
+                }
+
+                // --- EXECUÇÃO (Se passou nas validações acima) ---
+
+                // Vira o personagem
                 const dx = targetPoint.x - myPlayer.position.x;
                 const dz = targetPoint.z - myPlayer.position.z;
                 myPlayer.rotation.y = Math.atan2(dx, dz);
                 socket.emit('player_update', { position: myPlayer.position, rotation: myPlayer.rotation.y, animation: 'IDLE' });
 
+                // Envia comando
                 socket.emit('use_skill', { 
                     skillId: pendingSkill.id, targetId: null, x: targetPoint.x, z: targetPoint.z 
                 });
 
-                if (pendingSkill.castTime > 0) {
+                // Inicia Cooldown Visual
+                const skillId = pendingSkill.id;
+                const skillCd = pendingSkill.cooldown;
+                const castTime = pendingSkill.castTime;
+
+                if (castTime > 0) {
                     if (castingTimer) clearTimeout(castingTimer);
                     castingTimer = setTimeout(() => {
-                        startCooldownUI(pendingSkill.id, pendingSkill.cooldown);
-                        localCooldowns[pendingSkill.id] = Date.now() + pendingSkill.cooldown;
+                        startCooldownUI(skillId, skillCd);
+                        localCooldowns[skillId] = Date.now() + skillCd;
                         castingTimer = null;
-                    }, pendingSkill.castTime);
+                    }, castTime);
                 } else {
-                    startCooldownUI(pendingSkill.id, pendingSkill.cooldown);
-                    localCooldowns[pendingSkill.id] = Date.now() + pendingSkill.cooldown;
+                    startCooldownUI(skillId, skillCd);
+                    localCooldowns[skillId] = Date.now() + skillCd;
                 }
 
                 pendingSkill = null;
@@ -273,6 +291,8 @@ socket.on('login_success', (data) => {
     myAttributes = data.playerData.attributes || { str:5, agi:5, int:5, vit:5 };
     myPoints = data.playerData.points || 0;
     globalMonsterTypes = data.monsterTypes || {};
+    WEAPON_TYPES = data.weaponTypes || {};
+    ITEM_TYPES = data.itemTypes || {};
 
     myInventory = data.inventory;
     myEquipment = data.equipment || {}; // Salva equipamento
@@ -314,16 +334,40 @@ socket.on('map_changed', (data) => {
 });
 
 socket.on('update_stats', (data) => {
+    // 1. Guardamos o estado anterior para comparar
+    const oldPoints = myPoints;
+    const oldLevel = myLevel;
+
+    // 2. Atualizamos as globais
     myStats = data.stats; 
     myLevel = data.level;
     myXp = data.xp;
     myNextXp = data.nextLevelXp;
     myAttributes = data.attributes;
     myPoints = data.points;
+
+    // 3. Atualiza HUD
     updateHUD(myStats, myLevel, myXp, myNextXp);
     if(document.getElementById('st-points')) document.getElementById('st-points').textContent = myPoints;
+
+    // 4. LÓGICA ROBUSTA DA JANELA DE STATUS
     if (UI.statusWindow.style.display !== 'none') {
-        setupStatusWindowData(myAttributes, myPoints, myStats);
+        
+        // Verifica se houve mudança CRÍTICA (Upar de nível ou gastar pontos)
+        const isStructuralChange = (myPoints !== oldPoints || myLevel !== oldLevel);
+
+        if (isStructuralChange) {
+            // Se mudou nível/pontos, fazemos um RESET TOTAL (false no último parâmetro).
+            // Isso garante que se você upar, os novos pontos apareçam corretamente.
+            setupStatusWindowData(myAttributes, myPoints, myStats, false);
+        } else {
+            // Se NÃO mudou nível/pontos (ex: Dano, Troca de Equipamento, Buffs),
+            // chamamos com TRUE. Isso recalcula ATQ/DEF baseados no novo equipamento,
+            // mas MANTÉM seus pontos distribuídos onde você deixou.
+            setupStatusWindowData(myAttributes, myPoints, myStats, true);
+        }
+        
+        // Redesenha os números na tela
         refreshStatusWindow();
     }
 });
@@ -588,14 +632,16 @@ function initEngine() {
         }
     });
 
-window.triggerHotkey = (slotIndex) => {
+    window.triggerHotkey = (slotIndex) => {
         const slotData = getHotkeyItem(slotIndex);
         if (!slotData) return; 
 
+        // --- USO DE ITEM ---
         if (slotData.type === 'ITEM') {
             const inventoryIndex = myInventory.findIndex(slot => slot.id === slotData.id);
             if (inventoryIndex !== -1) socket.emit('use_item', inventoryIndex);
         } 
+        // --- USO DE SKILL ---
         else if (slotData.type === 'SKILL') {
             const skill = skillDB[slotData.id];
             if (!skill) return;
@@ -613,33 +659,25 @@ window.triggerHotkey = (slotIndex) => {
                 return;
             }
 
-            // Lógica de Auto-Target (Mantida igual)
+            // 3. Lógica de Auto-Target / Targeting
+            // (Isso atualiza o currentTargetId se necessário)
             const GLOBAL_CHASE_LIMIT = 15.0;
+            
             if (skill.type === 'MELEE') {
                 checkAndSwapMeleeTarget();
             } else if ((skill.type === 'CASTING' || skill.type === 'INSTANT') && !currentTargetId) {
-                let needNewTarget = !currentTargetId;
-                if (currentTargetId) {
-                    const t = monsters[currentTargetId] || otherPlayers[currentTargetId];
-                    if (t) {
-                        const dist = myPlayer.position.distanceTo(t.position);
-                        const giveUpDistance = Math.max(GLOBAL_CHASE_LIMIT, skill.range + 1.0);
-                        if (dist > giveUpDistance) { currentTargetId = null; needNewTarget = true; }
-                    } else { needNewTarget = true; }
-                }
-                if (needNewTarget) {
-                    const foundId = findBestAutoTarget(skill.range);
-                    if (foundId) {
-                        currentTargetId = foundId;
-                        const newT = monsters[foundId] || otherPlayers[foundId];
-                        if (targetRing && newT) {
-                            targetRing.visible = true; targetRing.position.copy(newT.position); lastRenderedTargetId = foundId;
-                        }
+                // Tenta achar alvo se não tiver
+                const foundId = findBestAutoTarget(skill.range);
+                if (foundId) {
+                    currentTargetId = foundId;
+                    const newT = monsters[foundId] || otherPlayers[foundId];
+                    if (targetRing && newT) {
+                        targetRing.visible = true; targetRing.position.copy(newT.position); lastRenderedTargetId = foundId;
                     }
                 }
             }
 
-            // Lógica de Área (Meteoro)
+            // 4. PREPARAÇÃO DE ÁREA (Meteoro) - Lógica separada
             if (skill.type === 'AREA') {
                 pendingSkill = skill;
                 AreaCursor.setVisible(true, skill.radius);
@@ -647,58 +685,75 @@ window.triggerHotkey = (slotIndex) => {
                 return; 
             }
 
-            // --- EXECUÇÃO DO COMANDO ---
-            if (currentTargetId || skill.type === 'SUPPORT' || skill.type === 'MELEE') {
+            // --- CORREÇÃO ROBUSTA AQUI: VALIDAÇÃO PRÉVIA DO CLIENTE ---
+            // Antes de enviar ou gastar cooldown, verificamos se é possível usar a skill.
+            
+            // A) Precisa de Alvo? (MELEE, CASTING, INSTANT precisam. SUPPORT não precisa pois é self-cast)
+            if (skill.type !== 'SUPPORT') {
                 
-                if (currentTargetId) {
-                    const targetObj = monsters[currentTargetId] || otherPlayers[currentTargetId];
-                    if (targetObj) {
-                        const dist = myPlayer.position.distanceTo(targetObj.position);
-                        
-                        // --- CORREÇÃO: VALIDAÇÃO DE ALCANCE UNIVERSAL ---
-                        // Se não for Support (que pode ser self-cast) e não for Area (já tratado acima)
-                        if (skill.type !== 'SUPPORT') {
-                            // Adicionamos uma pequena margem de 0.5m para compensar lag visual
-                            // Se a distância for maior que o range da skill, BLOQUEIA.
-                            if (dist > skill.range + 0.5) {
-                                addLogMessage('SISTEMA', 'Alvo fora de alcance!', 'system');
-                                return; // <--- O PULO DO GATO: Cancela envio e cooldown
-                            }
-                        }
-                        // ------------------------------------------------
-
-                        // Vira o char
-                        const dx = targetObj.position.x - myPlayer.position.x;
-                        const dz = targetObj.position.z - myPlayer.position.z;
-                        myPlayer.rotation.y = Math.atan2(dx, dz);
-                        socket.emit('player_update', { position: myPlayer.position, rotation: myPlayer.rotation.y, animation: 'IDLE' });
-                    }
+                // Se não tem alvo selecionado (e o auto-target lá em cima falhou)
+                if (!currentTargetId) {
+                    addLogMessage('SISTEMA', 'Nenhum alvo encontrado.', 'system');
+                    return; // PARA AQUI! Não inicia cooldown.
                 }
-                
-                if (skill.type === 'MELEE') playAnim(myPlayer, 'ATTACK');
 
-                // Envia para o servidor
-                socket.emit('use_skill', { skillId: slotData.id, targetId: currentTargetId });
+                // B) Validação de Alcance (Range)
+                const targetObj = monsters[currentTargetId] || otherPlayers[currentTargetId];
+                if (targetObj) {
+                    const dist = myPlayer.position.distanceTo(targetObj.position);
+                    // Tolerância leve de 0.5m para compensar lag visual
+                    if (dist > skill.range + 0.5) {
+                        addLogMessage('SISTEMA', 'Alvo fora de alcance.', 'system');
+                        return; // PARA AQUI! Não inicia cooldown.
+                    }
 
-                // Inicia Cooldown Visual
-                if (skill.castTime > 0) {
-                    if (castingTimer) clearTimeout(castingTimer);
-                    castingTimer = setTimeout(() => {
-                        if (skill.cooldown > 0) {
-                            startCooldownUI(skill.id, skill.cooldown);
-                            localCooldowns[skill.id] = Date.now() + skill.cooldown;
+                    // C) Validação de Ângulo (Opcional, mas bom para Ranged/Casting)
+                    if (skill.type === 'CASTING' || skill.type === 'INSTANT') {
+                        if (!isTargetInFront(targetObj)) {
+                            addLogMessage('SISTEMA', 'Precisa estar de frente.', 'system');
+                            return; // PARA AQUI!
                         }
-                        castingTimer = null;
-                    }, skill.castTime);
+                    }
                 } else {
+                    // ID existe mas objeto sumiu (raro, mas possível)
+                    currentTargetId = null;
+                    return;
+                }
+            }
+
+            // --- SE PASSOU POR TUDO, EXECUTA ---
+            
+            // Vira o char para o alvo (se tiver)
+            if (currentTargetId) {
+                const targetObj = monsters[currentTargetId] || otherPlayers[currentTargetId];
+                if (targetObj) {
+                    const dx = targetObj.position.x - myPlayer.position.x;
+                    const dz = targetObj.position.z - myPlayer.position.z;
+                    myPlayer.rotation.y = Math.atan2(dx, dz);
+                    socket.emit('player_update', { position: myPlayer.position, rotation: myPlayer.rotation.y, animation: 'IDLE' });
+                }
+            }
+            
+            if (skill.type === 'MELEE') playAnim(myPlayer, 'ATTACK');
+
+            // Envia para o servidor
+            socket.emit('use_skill', { skillId: slotData.id, targetId: currentTargetId });
+
+            // Inicia Cooldown Visual
+            if (skill.castTime > 0) {
+                if (castingTimer) clearTimeout(castingTimer);
+                castingTimer = setTimeout(() => {
                     if (skill.cooldown > 0) {
                         startCooldownUI(skill.id, skill.cooldown);
                         localCooldowns[skill.id] = Date.now() + skill.cooldown;
                     }
-                }
-            
+                    castingTimer = null;
+                }, skill.castTime);
             } else {
-                addLogMessage('SISTEMA', 'Selecione um alvo (TAB) para esta skill.', 'system');
+                if (skill.cooldown > 0) {
+                    startCooldownUI(skill.id, skill.cooldown);
+                    localCooldowns[skill.id] = Date.now() + skill.cooldown;
+                }
             }
         }
     };
@@ -910,7 +965,7 @@ function performAttack() {
 
     let weaponId = myEquipment.weapon;
     let weaponConfig = weaponId ? itemDB[weaponId] : null;
-    let isRanged = weaponConfig && weaponConfig.weaponType === 'ranged';
+    let isRanged = weaponConfig && weaponConfig.weaponType === WEAPON_TYPES.RANGED;;
     let range = isRanged ? (weaponConfig.range || 10) : 2.5;
 
     // --- NOVA LÓGICA DE PERSEGUIÇÃO ---

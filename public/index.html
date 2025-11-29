@@ -74,9 +74,10 @@
         <div class="win-content">
             <div class="points-row">Pontos Disponíveis: <span id="st-points" style="color:#0ff">0</span></div>
 
-            <!-- Atributos Primários -->
+            <!-- ATRIBUTOS PRIMÁRIOS -->
+            <!-- Mudança: O Nome e o Bonus agora estão lado a lado, o Flexbox vai alinhar -->
             <div class="attr-row">
-                <span>FORÇA</span>
+                <div>FORÇA <span id="bon-str" class="stat-bonus"></span></div>
                 <div class="attr-controls">
                     <button onclick="changeAttr('str', -1)">-</button>
                     <span id="val-str">0</span>
@@ -84,7 +85,7 @@
                 </div>
             </div>
             <div class="attr-row">
-                <span>AGILIDADE</span>
+                <div>AGILIDADE <span id="bon-agi" class="stat-bonus"></span></div>
                 <div class="attr-controls">
                     <button onclick="changeAttr('agi', -1)">-</button>
                     <span id="val-agi">0</span>
@@ -92,7 +93,7 @@
                 </div>
             </div>
             <div class="attr-row">
-                <span>INTELIG.</span>
+                <div>INTELIG. <span id="bon-int" class="stat-bonus"></span></div>
                 <div class="attr-controls">
                     <button onclick="changeAttr('int', -1)">-</button>
                     <span id="val-int">0</span>
@@ -100,7 +101,7 @@
                 </div>
             </div>
             <div class="attr-row">
-                <span>VITALID.</span>
+                <div>VITALID. <span id="bon-vit" class="stat-bonus"></span></div>
                 <div class="attr-controls">
                     <button onclick="changeAttr('vit', -1)">-</button>
                     <span id="val-vit">0</span>
@@ -110,13 +111,13 @@
 
             <hr style="border-color: #444; margin: 10px 0;">
 
-            <!-- Stats Derivados -->
+            <!-- STATUS DERIVADOS -->
             <div class="derived-stats">
-                <div>ATQ: <span id="d-atk">0</span></div>
-                <div>DEF: <span id="d-def">0</span></div>
-                <div>M.ATK: <span id="d-matk">0</span></div>
-                <div>ESQ: <span id="d-eva">0</span></div>
-                <div>VEL: <span id="d-spd">0</span></div>
+                <div>ATQ: <span id="d-atk" style="margin-left:4px">0</span><span id="bon-atk" class="stat-bonus"></span></div>
+                <div>DEF: <span id="d-def" style="margin-left:4px">0</span><span id="bon-def" class="stat-bonus"></span></div>
+                <div>M.ATK: <span id="d-matk" style="margin-left:4px">0</span><span id="bon-matk" class="stat-bonus"></span></div>
+                <div>ESQ: <span id="d-eva" style="margin-left:4px">0</span><span id="bon-eva" class="stat-bonus"></span></div>
+                <div>VEL: <span id="d-spd" style="margin-left:4px">0</span></div>
             </div>
 
             <div class="win-footer">
