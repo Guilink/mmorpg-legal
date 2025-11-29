@@ -1,503 +1,416 @@
-* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+/* --- RESET & BASICS --- */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #000; font-family: 'MedievalSharp', cursive; user-select: none; }
 
-/* REGRA GLOBAL DE BLOQUEIO (Seleção e Drag) */
-* {
-    -webkit-user-select: none; /* Chrome/Safari */
-    -moz-user-select: none;    /* Firefox */
-    -ms-user-select: none;     /* Edge/IE */
-    user-select: none;         /* Padrão */
+/* VARIÁVEIS DE TEMA */
+:root {
+    --bg-wood: #5d4037;
+    --bg-wood-dark: #3e2723;
+    --bg-parchment: #f3e5ab; /* Cor de pergaminho */
+    --border-gold: #cba136;
+    --border-gold-light: #ffd700;
+    --text-dark: #2c1b0e;
+    --text-light: #ffecb3;
     
-    /* Impede arrastar (complemento ao JS) */
-    -webkit-user-drag: none;
+    --btn-primary: #8d6e63;
+    --btn-primary-hover: #a1887f;
+    --btn-danger: #c62828;
+    --btn-success: #2e7d32;
+    
+    --slot-bg: #4e342e; /* Fundo escuro do slot */
 }
 
-/* 1. REGRA MESTRA: TUDO É SETA POR PADRÃO */
-/* Note que removi 'input' e 'textarea' desta lista para evitar conflito */
-body, html, button, .link-btn, .close-btn, .hotkey-slot {
-    cursor: url('assets/cursors/cursor_default.png'), auto !important;
+/* CURSORES (Correção Global) */
+body, button, .rpg-btn { cursor: url('assets/cursors/cursor_default.png'), auto !important; }
+.item-slot, .win-header, .skill-item, .skill-icon { 
+    cursor: url('assets/cursors/cursor_pick.png'), pointer !important; 
 }
+/* Correção para Hotbar, Botões e Fechar */
+.hotkey-slot, .rpg-icon-btn, .close-btn { cursor: url('assets/cursors/cursor_pick.png'), pointer !important; }
 
-/* 2. EXCEÇÃO: CAMPOS DE DIGITAÇÃO */
-/* Ao colocar depois da regra mestra, garantimos que o cursor de texto funcione */
-input, textarea {
-    -webkit-user-select: text !important;
-    -moz-user-select: text !important;
-    -ms-user-select: text !important;
-    user-select: text !important;
-    cursor: text !important; /* Cursor "I" do sistema */
-}
+input { cursor: text !important; user-select: text !important; }
 
-/* 3. EXCEÇÕES: ONDE DEVE SER A MÃOZINHA DE PEGAR/ARRASTAR */
-.item-slot, .skill-icon, .win-header {
-    cursor: url('assets/cursors/cursor_pick.png'), pointer !important;
-}
+/* BLOQUEIOS DE UI (Mouse) */
+#hud, #chat-container, #damage-container, #hotbar-container, #debug-panel { pointer-events: none; }
+#chat-input, .hotkey-slot, .hud-buttons div, .rpg-window *, .rpg-panel * { pointer-events: auto; }
 
-/* 4. CORREÇÃO DE BLOQUEIO DE MOUSE (CRUCIAL PARA O 3D FUNCIONAR) */
-#hud, #chat-container, #damage-container, #hotbar-container, #debug-panel {
-    pointer-events: none; 
-}
-
-/* Reativa o mouse apenas nos elementos interativos dentro dessas divs */
-#chat-input, .hotkey-slot, .hud-buttons div {
-    pointer-events: auto;
-}
-
-/* TELA DE LOGIN */
+/* --- 1. TELA DE LOGIN --- */
 #login-screen {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     background: url('assets/login.png') no-repeat center center fixed;
     background-size: cover;
-    display: flex; justify-content: center; align-items: center;
-    z-index: 2000;
+    display: flex; justify-content: center; align-items: center; z-index: 2000;
 }
 
-.panel-box {
-    background: rgba(0, 0, 0, 0.85);
-    padding: 40px; border-radius: 10px;
-    border: 2px solid #00ffff; box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
-    text-align: center; width: 350px;
+.rpg-panel {
+    background: var(--bg-wood-dark);
+    border: 3px solid var(--border-gold);
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.8), inset 0 0 20px rgba(0,0,0,0.5);
+    color: var(--text-light);
+    text-align: center;
+    position: relative;
 }
-.panel-box h1 { color: #00ffff; margin-bottom: 20px; }
-.panel-box input {
-    width: 100%; padding: 12px; margin: 10px 0; background: #222;
-    border: 1px solid #444; color: #fff; border-radius: 4px;
-}
-.panel-box button {
-    width: 100%; padding: 12px; margin-top: 15px; background: #00ffff;
-    border: none; font-weight: bold; cursor: pointer; text-transform: uppercase;
-}
-.panel-box button:hover { background: #fff; }
-.link-btn { color: #aaa; font-size: 12px; margin-top: 15px; cursor: pointer; text-decoration: underline; }
-.error { color: #ff4444; font-size: 13px; margin-top: 10px; min-height: 18px; }
 
-/* LOADING */
+.login-panel { width: 350px; }
+.rpg-title {
+    color: var(--border-gold-light);
+    text-shadow: 2px 2px 0 #000;
+    margin-bottom: 20px;
+    font-size: 28px;
+    letter-spacing: 1px;
+}
+
+/* Inputs Estilizados */
+.input-group { text-align: left; margin-bottom: 15px; }
+.input-group label { display: block; font-size: 14px; color: #deb887; margin-bottom: 5px; }
+.input-group input, .rpg-input-number {
+    width: 100%; padding: 8px;
+    background: #2b1d15; border: 1px solid #5d4037;
+    color: #fff; font-family: 'Roboto', sans-serif;
+    border-radius: 4px; outline: none; transition: 0.2s;
+}
+.input-group input:focus { border-color: var(--border-gold); background: #3e2723; }
+
+/* Botões RPG */
+.rpg-btn {
+    width: 100%; padding: 10px; border: none; border-radius: 4px;
+    font-family: 'MedievalSharp', cursive; font-size: 16px; font-weight: bold;
+    color: #fff; text-shadow: 1px 1px 0 #000; cursor: pointer;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.4);
+    transition: transform 0.1s, box-shadow 0.1s;
+    background: linear-gradient(to bottom, #8d6e63, #5d4037);
+    border: 1px solid #a1887f;
+}
+.rpg-btn:active { transform: translateY(4px); box-shadow: 0 0 0 rgba(0,0,0,0.4); }
+.rpg-btn.primary { background: linear-gradient(to bottom, #f57f17, #ef6c00); border-color: #ffb74d; }
+.rpg-btn.success { background: linear-gradient(to bottom, #66bb6a, #2e7d32); border-color: #81c784; }
+.rpg-btn.danger { background: linear-gradient(to bottom, #ef5350, #c62828); border-color: #e57373; }
+.rpg-btn.small { width: auto; padding: 5px 15px; font-size: 14px; }
+
+.link-btn { margin-top: 15px; color: #deb887; text-decoration: underline; cursor: pointer; font-size: 12px; }
+.error { color: #ff5252; font-size: 13px; margin-top: 10px; min-height: 20px; }
+
+/* --- 2. LOADING --- */
 #loading-screen {
-    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-    background: #000; display: none; flex-direction: column;
-    justify-content: center; align-items: center; color: #00ffff; z-index: 1500;
+    position: absolute; width: 100%; height: 100%;
+    background: #1a1a1a; display: none; flex-direction: column;
+    justify-content: center; align-items: center; color: var(--border-gold); z-index: 1500;
 }
-.loading-bar-container {
-    width: 300px; height: 20px; background-color: #333;
-    border: 2px solid #555; border-radius: 10px; margin: 15px auto; overflow: hidden;
+.loading-bar-frame {
+    width: 400px; height: 24px; background: #000;
+    border: 2px solid var(--border-gold); border-radius: 12px;
+    padding: 2px; margin: 15px 0;
 }
 #loading-bar-fill {
-    width: 0%; height: 100%; background-color: #00ff88; transition: width 0.2s ease-out;
-}
-#loading-percent { font-size: 14px; color: #ccc; font-weight: bold; }
-
-/* HUD */
-#hud { position: absolute; top: 10px; left: 10px; width: 300px; pointer-events: none; z-index: 100; }
-.bar-container {
-    background: rgba(0,0,0,0.6); padding: 5px; border-radius: 5px; margin-bottom: 5px;
-    border: 1px solid #555; display: flex; flex-direction: column; gap: 5px;
-}
-.stat-row { display: flex; justify-content: space-between; font-size: 12px; color: white; }
-.progress-bg { width: 100%; height: 10px; background: #333; border-radius: 3px; overflow: hidden; }
-.progress-fill { height: 100%; transition: width 0.2s; }
-.hp-fill { background: #ff3333; } .mp-fill { background: #3388ff; }
-
-.level-box { 
-    display: flex; align-items: center; margin-bottom: 5px; 
-    background: rgba(0,0,0,0.6); padding: 5px; border-radius: 5px; border: 1px solid #555;
-}
-.lvl-badge { 
-    font-weight: bold; color: #ffd700; margin-right: 8px; font-size: 14px; white-space: nowrap;
-}
-.xp-bg { 
-    width: 100%; height: 6px; background: #222; border-radius: 2px; border: 1px solid #444; 
-}
-.xp-fill { 
-    height: 100%; background: #00ff00; width: 0%; transition: width 0.3s; 
+    height: 100%; background: linear-gradient(90deg, #c62828, #ff8f00);
+    border-radius: 10px; width: 0%; transition: width 0.2s;
 }
 
-/* --- BOTÕES LATERAIS (STATUS / INVENTÁRIO) --- */
-.hud-buttons {
-    position: fixed !important;
-    top: 130px; 
-    left: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    z-index: 500;
-    pointer-events: auto;
+/* --- 3. HUD (TOPO) --- */
+#hud {
+    position: absolute; top: 15px; left: 15px; width: 320px; z-index: 100;
+}
+.hud-top-row { display: flex; align-items: center; margin-bottom: 5px; }
+.level-badge {
+    width: 50px; height: 50px; 
+    background: radial-gradient(circle, #5d4037, #3e2723);
+    border: 2px solid var(--border-gold); border-radius: 50%;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    color: var(--border-gold-light); font-weight: bold; z-index: 2;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+}
+.lvl-label { font-size: 10px; color: #aaa; }
+#lvl-text { font-size: 18px; line-height: 1; }
+
+.xp-container { flex: 1; height: 10px; background: #222; border: 1px solid #555; margin-left: -10px; border-radius: 0 5px 5px 0; position: relative; z-index: 1; }
+.xp-fill { height: 100%; background: #76ff03; box-shadow: 0 0 5px #76ff03; width: 0%; border-radius: 0 5px 5px 0; transition: width 0.3s; }
+
+.bars-container { background: rgba(0,0,0,0.5); padding: 8px; border-radius: 6px; border: 1px solid #444; }
+.bar-row { margin-bottom: 5px; }
+.bar-frame {
+    height: 18px; background: #1a1a1a; border: 1px solid #5d4037;
+    border-radius: 3px; position: relative; overflow: hidden;
+}
+.bar-fill { height: 100%; transition: width 0.2s; }
+.hp-fill { background: linear-gradient(to right, #b71c1c, #e53935); }
+.mp-fill { background: linear-gradient(to right, #0d47a1, #1e88e5); }
+.bar-text {
+    position: absolute; top: 0; left: 0; width: 100%; text-align: center;
+    font-size: 11px; line-height: 16px; color: #fff; text-shadow: 1px 1px 1px #000;
+    font-family: 'Roboto', sans-serif;
 }
 
-#btn-status, #btn-inventory {
-    position: static !important; margin: 0 !important;
-    width: 35px; height: 35px; 
-    background: #222; border: 2px solid #777; color: #fff;
-    text-align: center; line-height: 31px; font-weight: bold; 
-    cursor: pointer; border-radius: 4px; 
+/* --- 4. BOTÕES LATERAIS --- */
+.hud-buttons { position: fixed; top: 140px; left: 15px; display: flex; flex-direction: column; gap: 10px; z-index: 500; }
+.rpg-icon-btn {
+    width: 40px; height: 40px; 
+    background: radial-gradient(#5d4037, #3e2723);
+    border: 2px solid #8d6e63; border-radius: 8px;
+    color: #deb887; font-size: 18px; font-weight: bold;
+    display: flex; justify-content: center; align-items: center;
+    cursor: pointer; box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
     transition: 0.2s;
-    font-size: 14px;
-    font-family: sans-serif;
 }
-#btn-status:hover, #btn-inventory:hover { 
-    background: #444; border-color: #ffd700; color: #ffd700; 
-}
+.rpg-icon-btn:hover { border-color: var(--border-gold); color: #fff; transform: scale(1.05); }
 
-/* JANELAS (STATUS E INVENTÁRIO) */
-#status-window, #inventory-window {
+/* --- 5. JANELAS (Estrutura Comum) --- */
+.rpg-window {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    width: 320px; background: rgba(0,0,0,0.95); border: 2px solid #ffd700;
-    border-radius: 8px; color: white; z-index: 2001; box-shadow: 0 0 20px #000;
-    font-family: 'Segoe UI', sans-serif;
+    width: 340px; background: var(--bg-wood);
+    border: 2px solid var(--border-gold);
+    border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+    z-index: 2000; display: flex; flex-direction: column;
 }
-#status-window { width: 280px; border-color: #00ffff; }
-
 .win-header {
-    background: #008888; color: white; padding: 10px; text-align: center; font-weight: bold;
+    background: var(--bg-wood-dark);
+    color: var(--border-gold-light);
+    padding: 8px 12px; font-size: 18px;
+    border-bottom: 2px solid #8d6e63;
+    display: flex; justify-content: space-between; align-items: center;
+    border-radius: 6px 6px 0 0;
 }
-#inventory-window .win-header { background: #006666; }
+.close-btn { color: #ef5350; cursor: pointer; font-size: 20px; transition: 0.2s; }
+.close-btn:hover { color: #ff1744; text-shadow: 0 0 5px red; }
 
-.win-content { padding: 15px; }
-.points-row { text-align: center; margin-bottom: 15px; font-weight: bold; }
-.attr-row { 
-    display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; 
-}
-.attr-controls { display: flex; align-items: center; gap: 10px; }
-.attr-controls button {
-    width: 25px; height: 25px; background: #333; border: 1px solid #666; color: white; cursor: pointer;
-}
-.attr-controls button:hover { background: #555; }
-.attr-controls span { width: 20px; text-align: center; }
-
-.derived-stats { 
-    display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 12px; color: #aaa; margin-bottom: 15px;
-}
-.derived-stats span { color: #fff; font-weight: bold; }
-
-.win-footer { display: flex; gap: 10px; padding: 10px; }
-.btn-confirm { flex: 1; background: #00aa00; border: none; padding: 8px; color: white; cursor: pointer; font-weight: bold; }
-.btn-cancel { flex: 1; background: #aa0000; border: none; padding: 8px; color: white; cursor: pointer; font-weight: bold; }
-
-/* INVENTÁRIO ESPECÍFICO */
-.equip-grid {
-    display: flex; justify-content: center; gap: 10px; padding: 10px; background: #111;
-}
-.slot-container { display: flex; flex-direction: column; align-items: center; }
-.slot-label { font-size: 10px; color: #aaa; margin-bottom: 2px; }
-
-.item-slot {
-    width: 40px; height: 40px; background: #222; border: 1px solid #444;
-    cursor: pointer; position: relative; display: flex; justify-content: center; align-items: center;
-}
-.item-slot:hover { border-color: #fff; background: #333; }
-.item-slot img { width: 32px; height: 32px; image-rendering: auto; }
-
-.bag-grid {
-    display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; padding: 10px;
-    max-height: 200px; overflow-y: auto; background: #1a1a1a;
-}
-.item-qtd {
-    position: absolute; bottom: 2px; right: 2px; font-size: 10px; font-weight: bold;
-    color: #fff; text-shadow: 1px 1px 0 #000; pointer-events: none;
+.win-content { padding: 15px; color: var(--text-dark); flex: 1; }
+/* Estilo de Pergaminho */
+.parchment-bg {
+    background: var(--bg-parchment);
+    box-shadow: inset 0 0 20px rgba(93, 64, 55, 0.3);
 }
 
-/* TOOLTIP DO ITEM */
-#item-tooltip {
-    position: fixed; 
-    top: 0; 
-    left: 0;
-    
-    /* ADICIONE ESTAS DUAS LINHAS DE SEGURANÇA: */
-    right: auto !important;
-    bottom: auto !important;
-    
-    background: rgba(0, 0, 0, 0.95); 
-    border: 1px solid #ffd700;
-    padding: 10px; 
-    pointer-events: none; 
-    z-index: 9999; 
-    width: 220px; 
-    font-size: 12px;
-    box-shadow: 4px 4px 10px rgba(0,0,0,0.5);
-    display: none; 
-}
-#item-tooltip h3 { margin-bottom: 5px; font-size: 14px; }
-#item-tooltip .desc { color: #ccc; margin-bottom: 5px; font-style: italic; }
-#item-tooltip .stat { color: #0f0; display: block; }
-
-/* CHAT */
-#chat-container {
-    position: absolute; bottom: 10px; left: 10px; width: 400px; z-index: 100; transition: opacity 0.3s;
-}
-#chat-history {
-    height: 200px; overflow-y: auto; background: rgba(0,0,0,0.5);
-    padding: 10px; border-radius: 5px; color: white; font-size: 13px; margin-bottom: 5px;
-    scrollbar-width: thin;
-}
-#chat-input {
-    width: 100%; padding: 10px; background: rgba(0,0,0,0.7);
-    border: 1px solid #555; color: white; border-radius: 5px;
+.win-footer {
+    background: var(--bg-wood-dark); padding: 10px;
+    border-top: 2px solid #8d6e63;
+    display: flex; justify-content: space-around;
+    border-radius: 0 0 6px 6px;
 }
 
-/* DEBUG */
-#debug-panel {
-    position: absolute; top: 10px; right: 10px;
-    background: rgba(0, 0, 0, 0.7); color: #00ff00;
-    padding: 10px; border-radius: 5px; font-family: 'Courier New', monospace;
-    font-size: 14px; font-weight: bold; z-index: 100; pointer-events: none; border: 1px solid #005500;
-}
+/* --- 6. JANELA DE STATUS (Específico) --- */
+.points-row { text-align: center; font-weight: bold; margin-bottom: 15px; color: #5d4037; }
+.highlight-text { color: #c62828; font-size: 18px; }
 
-/* DANOS FLUTUANTES */
-#damage-container {
-    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-    pointer-events: none; overflow: hidden; z-index: 50; 
+.attr-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.attr-card {
+    background: rgba(255,255,255,0.3); padding: 5px 10px;
+    border: 1px solid #d7ccc8; border-radius: 4px;
+    display: flex; justify-content: space-between; align-items: center;
 }
-.dmg-number {
-    position: absolute; font-family: 'Segoe UI', Arial, sans-serif;
-    font-weight: bold; font-size: 36px; text-shadow: 2px 2px 0px #000;
-    user-select: none; will-change: transform, opacity;
-    animation: floatUp 0.8s ease-out forwards;
+.attr-label { font-weight: bold; font-size: 14px; }
+.attr-controls { display: flex; align-items: center; gap: 8px; }
+.mini-btn {
+    width: 24px; height: 24px; background: #8d6e63; color: white;
+    border: 1px solid #5d4037; border-radius: 3px; cursor: pointer;
+    font-weight: bold; line-height: 1;
 }
-@keyframes floatUp {
-    0% { opacity: 1; transform: translate(-50%, 0) scale(1); }
-    50% { transform: translate(-50%, -30px) scale(1.5); }
-    100% { opacity: 0; transform: translate(-50%, -60px) scale(1); }
-}
+.mini-btn:hover { background: #a1887f; }
+.attr-val { width: 25px; text-align: center; font-weight: bold; }
+.stat-bonus { color: #2e7d32; font-size: 12px; margin-left: 4px; }
 
-/* CABEÇALHO ARRASTÁVEL */
-.win-header {
-    background: #008888; 
-    color: white; 
-    padding: 10px; 
+.separator { height: 2px; background: #d7ccc8; margin: 15px 0; }
+
+.derived-stats {
+    display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px;
+}
+.stat-box {
+    background: rgba(0,0,0,0.05); padding: 5px; border-radius: 4px;
+    width: 48%; border: 1px solid rgba(0,0,0,0.1); font-family: 'Roboto', sans-serif;
     font-weight: bold;
-    /* Novas propriedades: */
-    display: flex; 
-    justify-content: space-between; /* Texto na esq, X na dir */
-    align-items: center;
-    cursor: grab; /* Mãozinha aberta */
-    user-select: none; /* Impede selecionar o texto ao arrastar */
 }
+.stat-box.full-width { width: 100%; text-align: center; }
 
-.win-header:active {
-    cursor: grabbing; /* Mãozinha fechada ao clicar */
-}
+/* --- 7. INVENTÁRIO (Específico) --- */
 
-/* Cor diferente pro header do inventário (opcional, já existia) */
-#inventory-window .win-header { background: #006666; }
-
-/* BOTÃO FECHAR (X) */
-.close-btn {
-    cursor: pointer;
-    font-size: 16px;
-    color: #ccc;
-    transition: 0.2s;
-    line-height: 1;
-    padding: 0 5px;
-}
-.close-btn:hover {
-    color: #fff;
-    text-shadow: 0 0 5px #ff0000;
-}
-
-/* IMPEDE ARRASTAR NATIVO E SELEÇÃO */
-.item-slot img { 
-    width: 32px; height: 32px; image-rendering: auto; 
-    pointer-events: none; /* O clique passa pela imagem e vai pro slot div */
-    user-select: none;    /* Impede selecionar como texto */
-    -webkit-user-drag: none; /* Impede o navegador de arrastar a imagem */
-}
-
-/* O ÍCONE FLUTUANTE QUE SEGUE O MOUSE */
-.drag-ghost {
-    position: fixed;
-    width: 40px; height: 40px;
-    pointer-events: none; /* O mouse ignora ele (importante!) */
-    z-index: 10000;
-    opacity: 0.8;
-    background: rgba(0,0,0,0.5);
-    border: 1px solid #ffd700;
-    border-radius: 4px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-.drag-ghost img {
-    width: 32px; height: 32px; image-rendering: auto;
-}
-
-/* CURSORES PARA O INVENTÁRIO */
-.item-slot {
-    /* ... mantenha o resto ... */
-    cursor: grab; /* Mãozinha aberta */
-}
-.item-slot:active {
-    cursor: grabbing; /* Mãozinha fechada ao clicar */
-}
-
-/* HOTBAR */
-#hotbar-container {
-    position: absolute;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
+/* LAYOUT EM CRUZ (GRID) */
+.equip-doll {
+    display: grid;
+    grid-template-areas:
+        ". head ."
+        "weapon armor acc"
+        ". legs .";
     gap: 5px;
-    background: rgba(0, 0, 0, 0.6);
-    padding: 5px;
-    border-radius: 5px;
-    border: 1px solid #444;
-    z-index: 100;
+    justify-content: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed #a1887f;
 }
 
-.hotkey-slot {
-    width: 45px; height: 45px;
-    background: #222;
-    border: 1px solid #666;
-    position: relative;
-    cursor: pointer;
-    box-shadow: inset 0 0 10px #000;
+/* Áreas do Grid */
+.area-head { grid-area: head; }
+.area-weapon { grid-area: weapon; }
+.area-armor { grid-area: armor; }
+.area-acc { grid-area: acc; }
+.area-legs { grid-area: legs; }
+
+.slot-container { display: flex; flex-direction: column; align-items: center; margin-bottom: 5px; }
+.slot-label { font-size: 10px; color: #5d4037; margin-bottom: 2px; font-weight: bold; }
+
+.item-slot {
+    width: 44px; height: 44px;
+    background: var(--slot-bg);
+    border: 2px solid #3e2723;
+    border-radius: 4px;
+    box-shadow: inset 0 0 5px #000;
+    display: flex; justify-content: center; align-items: center;
+    position: relative; transition: border-color 0.2s;
+}
+.item-slot:hover { border-color: var(--border-gold-light); }
+.item-slot img { width: 34px; height: 34px; image-rendering: pixelated; pointer-events: none; }
+.item-qtd {
+    position: absolute; bottom: 1px; right: 2px;
+    font-size: 10px; color: #fff; text-shadow: 1px 1px 0 #000;
+    font-family: 'Roboto', sans-serif; pointer-events: none;
 }
 
-.hotkey-slot:hover { border-color: #ffd700; }
+.bag-header { font-weight: bold; margin-bottom: 5px; color: #3e2723; }
 
-.key-number {
-    position: absolute;
-    top: 1px; left: 3px;
-    font-size: 10px; color: #aaa;
-    pointer-events: none; /* O clique passa pelo número */
-    font-weight: bold;
-    text-shadow: 1px 1px 0 #000;
+/* MOCHILA - SCROLL COM 4 LINHAS */
+.bag-grid {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
+    background: rgba(0,0,0,0.1); padding: 5px; border-radius: 4px;
+    /* (44px slot + 4px gap) * 4 linhas = aprox 192px */
+    max-height: 195px; 
+    overflow-y: auto;
 }
 
-.hotkey-content {
-    width: 100%; height: 100%;
+/* --- 8. SKILLS --- */
+.skills-grid { max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
+.skill-item {
+    display: flex; gap: 10px; align-items: center;
+    background: rgba(255,255,255,0.4); border: 1px solid #d7ccc8;
+    padding: 5px; border-radius: 4px;
+}
+.skill-icon {
+    width: 40px; height: 40px; background: #333; border: 1px solid #000;
     display: flex; justify-content: center; align-items: center;
 }
-
-.hotkey-content img {
-    width: 34px; height: 34px;
-    image-rendering: auto;
-    pointer-events: none;
-}
-
-/* QUANTIDADE DE ITENS NA HOTBAR */
-.hotkey-qtd {
-    position: absolute;
-    bottom: 2px;
-    right: 3px;
-    font-size: 11px;
-    font-weight: bold;
-    color: #fff;
-    text-shadow: 1px 1px 1px #000;
-    pointer-events: none; /* Ignora cliques */
-}
-
-/* BARRA DE CAST */
-#cast-bar-container {
-    position: absolute;
-    bottom: 120px; /* Acima da hotbar */
-    left: 50%;
-    transform: translateX(-50%);
-    width: 250px;
-    text-align: center;
-    pointer-events: none;
-    z-index: 200;
-}
-
-#cast-name {
-    color: #ffd700;
-    font-weight: bold;
-    font-size: 14px;
-    text-shadow: 1px 1px 0 #000;
-    margin-bottom: 3px;
-}
-
-.cast-bg {
-    width: 100%;
-    height: 12px;
-    background: rgba(0, 0, 0, 0.8);
-    border: 1px solid #555;
-    border-radius: 6px;
-    overflow: hidden;
-}
-
-#cast-fill {
-    width: 0%;
-    height: 100%;
-    background: #ff8800; /* Laranja fogo */
-    transition: width 0.1s linear; /* Atualização suave */
-}
-
-/* JANELA DE SKILLS */
-#skills-window {
-    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    width: 300px; background: rgba(0,0,0,0.95); border: 2px solid #a0f;
-    border-radius: 8px; color: white; z-index: 2005; box-shadow: 0 0 20px #000;
-}
-
-#skills-window .win-header { background: #550088; }
-
-.skills-grid {
-    display: flex; flex-direction: column; gap: 5px; max-height: 250px; overflow-y: auto;
-}
-
-.skill-item {
-    display: flex; gap: 10px; padding: 5px; background: #222; border: 1px solid #444; align-items: center;
-}
-
-.skill-icon {
-    width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
-    font-weight: bold; font-size: 20px; border: 1px solid #fff;
-}
-
 .skill-info { flex: 1; }
-.skill-name { font-weight: bold; font-size: 13px; color: #e0e0e0; }
-.skill-desc { font-size: 11px; color: #aaa; }
+.skill-name { font-weight: bold; color: #3e2723; font-size: 14px; }
+.skill-desc { font-size: 11px; color: #5d4037; font-family: 'Roboto', sans-serif; }
 
-#btn-skills {
-    width: 35px; height: 35px; 
-    background: #222; border: 2px solid #777; color: #fff;
-    text-align: center; line-height: 31px; font-weight: bold; 
-    cursor: pointer; border-radius: 4px; 
-    transition: 0.2s; font-family: sans-serif;
+/* --- 9. HOTBAR --- */
+#hotbar-container {
+    position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%);
+    z-index: 100;
 }
-#btn-skills:hover { 
-    background: #444; border-color: #a0f; color: #a0f; /* Roxo para Skills */
+.hotbar-frame {
+    background: var(--bg-wood);
+    padding: 5px 10px; border-radius: 6px;
+    border: 2px solid var(--border-gold);
+    display: flex; gap: 6px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
 }
-
-/* EFEITO DE COOLDOWN */
 .hotkey-slot {
-    position: relative;
-    overflow: hidden;
+    width: 48px; height: 48px;
+    background: var(--slot-bg);
+    border: 2px solid #3e2723; border-radius: 4px;
+    position: relative; cursor: pointer;
+    box-shadow: inset 0 0 8px #000;
+}
+.key-number {
+    position: absolute; top: 0; left: 2px;
+    font-size: 10px; color: #ccc; z-index: 5;
+    font-family: 'Roboto', sans-serif;
+}
+.hotkey-content { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+.hotkey-content img { width: 36px; height: 36px; pointer-events: none; }
+.hotkey-qtd {
+    position: absolute; bottom: 0; right: 2px; color: white;
+    font-size: 11px; text-shadow: 1px 1px 0 #000; font-family: 'Roboto', sans-serif; z-index: 5;
 }
 
+/* Cooldown Overlay */
 .cd-overlay {
-    position: absolute;
-    bottom: 0; left: 0;
-    width: 100%; height: 0%;
-    background-color: rgba(0, 0, 0, 0.75);
-    z-index: 10;
+    position: absolute; bottom: 0; left: 0; width: 100%; height: 0%;
+    background: rgba(0,0,0,0.7); z-index: 4; transition: height linear; pointer-events: none;
+}
+
+/* --- 10. CHAT --- */
+#chat-container {
+    position: absolute; bottom: 20px; left: 15px; width: 350px;
+    background: rgba(0,0,0,0.6); border: 1px solid #555;
+    border-radius: 6px; padding: 5px;
+    font-family: 'Roboto', sans-serif; 
+}
+#chat-history {
+    height: 150px; overflow-y: auto; color: #fff; font-size: 13px;
+    margin-bottom: 5px; text-shadow: 1px 1px 0 #000;
+    scrollbar-width: thin;
+}
+.chat-msg { margin-bottom: 2px; }
+#chat-input {
+    width: 100%; background: rgba(0,0,0,0.5); border: 1px solid #777;
+    color: white; padding: 5px; font-size: 12px;
+}
+
+/* --- 11. CAST BAR --- */
+#cast-bar-container {
+    position: absolute; bottom: 160px; left: 50%; transform: translateX(-50%);
+    width: 250px; text-align: center; pointer-events: none; z-index: 200;
+}
+#cast-name { color: #ffd700; text-shadow: 1px 1px 0 #000; font-size: 14px; margin-bottom: 2px; }
+.cast-frame {
+    width: 100%; height: 14px; background: #222;
+    border: 2px solid #5d4037; border-radius: 7px; overflow: hidden;
+}
+#cast-fill { width: 0%; height: 100%; background: #ff9800; }
+
+/* --- 12. TOOLTIP --- */
+#item-tooltip {
+    position: fixed; top: 0; left: 0; z-index: 9999;
+    background: rgba(20, 15, 10, 0.95);
+    border: 2px solid var(--border-gold);
+    padding: 10px; max-width: 300px;
+    color: #fff; font-size: 12px; font-family: 'Roboto', sans-serif;
+    pointer-events: none; box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    white-space: normal;
+}
+#item-tooltip h3 { margin-bottom: 5px; font-family: 'MedievalSharp', cursive; font-size: 16px; border-bottom: 1px solid #555; padding-bottom: 3px; }
+#item-tooltip .desc { color: #aaa; margin-bottom: 8px; font-style: italic; }
+#item-tooltip .stat { display: block; margin-top: 2px; }
+
+/* --- 13. DRAG GHOST --- */
+.drag-ghost {
+    position: fixed; width: 44px; height: 44px;
+    pointer-events: none; z-index: 10000; opacity: 0.8;
+    background: var(--slot-bg); border: 1px solid #fff;
+    border-radius: 4px; display: flex; justify-content: center; align-items: center;
+}
+.drag-ghost img { width: 34px; height: 34px; }
+
+/* --- 14. MODAL DROP --- */
+.small-modal { width: 250px; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 3000; }
+.modal-title { color: #ef5350; font-size: 18px; margin-bottom: 10px; }
+.modal-actions { display: flex; justify-content: space-around; gap: 10px; margin-top: 15px; }
+
+/* --- 15. DEBUG & DAMAGE NUMBERS --- */
+#debug-panel {
+    position: absolute; top: 10px; right: 10px;
+    background: rgba(0,0,0,0.6); color: #0f0; padding: 5px;
+    font-size: 12px; font-family: monospace; border: 1px solid #004400;
+}
+
+#damage-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; z-index: 50; }
+
+.dmg-number {
+    position: absolute; 
+    font-family: 'Roboto', Arial, sans-serif; 
+    font-weight: 900; font-size: 38px; color: #fff;
+    text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 3px 3px 5px rgba(0,0,0,0.5);
     pointer-events: none;
-    transition: height linear;
+    animation: floatUp 0.8s ease-out forwards;
 }
 
-.hotkey-qtd { z-index: 11; }
-
-/* AJUSTE DAS LINHAS DE ATRIBUTOS */
-.attr-row { 
-    display: flex; 
-    justify-content: space-between; 
-    align-items: center; /* Isso força o alinhamento vertical perfeito */
-    margin-bottom: 8px;
-    height: 28px; /* Altura fixa ajuda na consistência */
+@keyframes floatUp {
+    0% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    50% { transform: translate(-50%, -40px) scale(1.2); }
+    100% { opacity: 0; transform: translate(-50%, -80px) scale(1); }
 }
 
-/* TEXTO DOS BÔNUS (+X) */
-.stat-bonus {
-    color: #ffd700 !important; /* Amarelo Ouro (Força sobre o branco) */
-    font-size: 12px;
-    font-weight: bold; /* Fica mais bonito em negrito */
-    margin-left: 5px;  /* Espaço do texto principal */
-    position: relative;
-    top: 0px; /* Ajuste fino se precisar, mas com flexbox geralmente é 0 */
-}
-
-/* GARANTIR QUE OS DERIVADOS ACEITEM A COR */
-.derived-stats div {
-    display: flex;
-    align-items: center; /* Alinha texto base e bonus verticalmente */
-}
-
+/* Scrollbars personalizadas estilo Madeira */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: #8d6e63; border: 1px solid #5d4037; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #a1887f; }

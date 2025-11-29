@@ -3,252 +3,292 @@
 <head>
     <meta charset="UTF-8">
     <title>MMORPG V3</title>
+    <!-- Fonte RPG -->
+    <link href="https://fonts.googleapis.com/css2?family=MedievalSharp&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
     <!-- LOGIN -->
     <div id="login-screen">
-        <div id="form-login" class="panel-box">
-            <h1>Login</h1>
-            <input type="text" id="login-user" placeholder="Usuário">
-            <input type="password" id="login-pass" placeholder="Senha">
-            <button onclick="performLogin()">Entrar</button>
-            <div class="link-btn" onclick="toggleForms()">Criar nova conta</div>
-            <div id="login-error" class="error"></div>
-        </div>
+        <div class="rpg-panel login-panel">
+            <!-- Alterna entre Login e Registro -->
+            <div id="form-login">
+                <h1 class="rpg-title">Login</h1>
+                <div class="input-group">
+                    <label>Usuário</label>
+                    <input type="text" id="login-user" autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <label>Senha</label>
+                    <input type="password" id="login-pass">
+                </div>
+                <button class="rpg-btn primary" onclick="performLogin()">Entrar no Mundo</button>
+                <div class="link-btn" onclick="toggleForms()">Criar nova conta</div>
+                <div id="login-error" class="error"></div>
+            </div>
 
-        <div id="form-register" class="panel-box" style="display: none;">
-            <h1>Criar Conta</h1>
-            <input type="text" id="reg-user" placeholder="Usuário">
-            <input type="password" id="reg-pass" placeholder="Senha">
-            <input type="password" id="reg-pass2" placeholder="Repetir Senha">
-            <button onclick="performRegister()">Registrar</button>
-            <div class="link-btn" onclick="toggleForms()">Voltar ao Login</div>
-            <div id="reg-error" class="error"></div>
+            <div id="form-register" style="display: none;">
+                <h1 class="rpg-title">Novo Herói</h1>
+                <div class="input-group">
+                    <label>Usuário</label>
+                    <input type="text" id="reg-user" autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <label>Senha</label>
+                    <input type="password" id="reg-pass">
+                </div>
+                <div class="input-group">
+                    <label>Repetir Senha</label>
+                    <input type="password" id="reg-pass2">
+                </div>
+                <button class="rpg-btn success" onclick="performRegister()">Registrar</button>
+                <div class="link-btn" onclick="toggleForms()">Voltar ao Login</div>
+                <div id="reg-error" class="error"></div>
+            </div>
         </div>
     </div>
 
     <!-- LOADING -->
     <div id="loading-screen">
         <h2>VIAJANDO PARA...</h2>
-        <h1 id="map-name" style="font-size: 40px; margin: 10px 0;">---</h1>
-        <div class="loading-bar-container">
+        <h1 id="map-name" class="map-title">---</h1>
+        <div class="loading-bar-frame">
             <div id="loading-bar-fill"></div>
         </div>
         <div id="loading-percent">0%</div>
-        <p>Carregando terreno e entidades...</p>
     </div>
 
     <!-- HUD (Barras de Vida/Mana/XP) -->
     <div id="hud" style="display: none;">
         <!-- Level e XP -->
-        <div class="level-box">
-            <span class="lvl-badge">Nv. <span id="lvl-text">1</span></span>
-            <div class="xp-bg"><div id="xp-bar" class="xp-fill" style="width: 0%"></div></div>
+        <div class="hud-top-row">
+            <div class="level-badge">
+                <span class="lvl-label">NV.</span>
+                <span id="lvl-text">1</span>
+            </div>
+            <div class="xp-container">
+                <div id="xp-bar" class="xp-fill" style="width: 0%"></div>
+            </div>
         </div>
 
         <!-- Barras HP/MP -->
-        <div class="bar-container">
-            <div class="stat-row"><span>HP</span> <span id="hp-text">Loading...</span></div>
-            <div class="progress-bg"><div id="hp-bar" class="progress-fill hp-fill" style="width: 100%"></div></div>
-            
-            <div class="stat-row"><span>MP</span> <span id="mp-text">Loading...</span></div>
-            <div class="progress-bg"><div id="mp-bar" class="progress-fill mp-fill" style="width: 100%"></div></div>
+        <div class="bars-container">
+            <div class="bar-row">
+                <div class="bar-frame">
+                    <div id="hp-bar" class="bar-fill hp-fill" style="width: 100%"></div>
+                    <span class="bar-text" id="hp-text">HP Loading...</span>
+                </div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-frame">
+                    <div id="mp-bar" class="bar-fill mp-fill" style="width: 100%"></div>
+                    <span class="bar-text" id="mp-text">MP Loading...</span>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- BOTÕES LATERAIS (Separado do HUD para alinhar perfeito) -->
+    <!-- BOTÕES LATERAIS -->
     <div class="hud-buttons" id="hud-buttons" style="display: none;">
-        <div id="btn-status" onclick="toggleStatusWindow()">A</div>
-        <div id="btn-inventory" onclick="toggleInventory()">E</div>
-        <div id="btn-skills" onclick="toggleSkills()">H</div>
+        <div id="btn-status" class="rpg-icon-btn" onclick="toggleStatusWindow()" title="Atributos (Alt+A)">A</div>
+        <div id="btn-inventory" class="rpg-icon-btn" onclick="toggleInventory()" title="Inventário (Alt+E)">I</div>
+        <div id="btn-skills" class="rpg-icon-btn" onclick="toggleSkills()" title="Habilidades (Alt+H)">H</div>
     </div>
 
     <!-- JANELA DE STATUS -->
-    <div id="status-window" style="display: none;">
-    <div class="win-header">
-        <span>ATRIBUTOS</span>
-        <span class="close-btn" onclick="toggleStatusWindow()">&#10006;</span>
-    </div>
-        <div class="win-content">
-            <div class="points-row">Pontos Disponíveis: <span id="st-points" style="color:#0ff">0</span></div>
+    <div id="status-window" class="rpg-window" style="display: none;">
+        <div class="win-header">
+            <span>ATRIBUTOS</span>
+            <span class="close-btn" onclick="toggleStatusWindow()">&#10006;</span>
+        </div>
+        <div class="win-content parchment-bg">
+            <div class="points-row">Pontos Disponíveis: <span id="st-points" class="highlight-text">0</span></div>
 
-            <!-- ATRIBUTOS PRIMÁRIOS -->
-            <!-- Mudança: O Nome e o Bonus agora estão lado a lado, o Flexbox vai alinhar -->
-            <div class="attr-row">
-                <div>FORÇA <span id="bon-str" class="stat-bonus"></span></div>
-                <div class="attr-controls">
-                    <button onclick="changeAttr('str', -1)">-</button>
-                    <span id="val-str">0</span>
-                    <button onclick="changeAttr('str', 1)">+</button>
+            <div class="attr-grid">
+                <!-- Força -->
+                <div class="attr-card">
+                    <div class="attr-label">FORÇA <span id="bon-str" class="stat-bonus"></span></div>
+                    <div class="attr-controls">
+                        <button class="mini-btn" onclick="changeAttr('str', -1)">-</button>
+                        <span id="val-str" class="attr-val">0</span>
+                        <button class="mini-btn" onclick="changeAttr('str', 1)">+</button>
+                    </div>
                 </div>
-            </div>
-            <div class="attr-row">
-                <div>AGILIDADE <span id="bon-agi" class="stat-bonus"></span></div>
-                <div class="attr-controls">
-                    <button onclick="changeAttr('agi', -1)">-</button>
-                    <span id="val-agi">0</span>
-                    <button onclick="changeAttr('agi', 1)">+</button>
+                <!-- Agilidade -->
+                <div class="attr-card">
+                    <div class="attr-label">AGILIDADE <span id="bon-agi" class="stat-bonus"></span></div>
+                    <div class="attr-controls">
+                        <button class="mini-btn" onclick="changeAttr('agi', -1)">-</button>
+                        <span id="val-agi" class="attr-val">0</span>
+                        <button class="mini-btn" onclick="changeAttr('agi', 1)">+</button>
+                    </div>
                 </div>
-            </div>
-            <div class="attr-row">
-                <div>INTELIG. <span id="bon-int" class="stat-bonus"></span></div>
-                <div class="attr-controls">
-                    <button onclick="changeAttr('int', -1)">-</button>
-                    <span id="val-int">0</span>
-                    <button onclick="changeAttr('int', 1)">+</button>
+                <!-- Inteligencia -->
+                <div class="attr-card">
+                    <div class="attr-label">INTELIG. <span id="bon-int" class="stat-bonus"></span></div>
+                    <div class="attr-controls">
+                        <button class="mini-btn" onclick="changeAttr('int', -1)">-</button>
+                        <span id="val-int" class="attr-val">0</span>
+                        <button class="mini-btn" onclick="changeAttr('int', 1)">+</button>
+                    </div>
                 </div>
-            </div>
-            <div class="attr-row">
-                <div>VITALID. <span id="bon-vit" class="stat-bonus"></span></div>
-                <div class="attr-controls">
-                    <button onclick="changeAttr('vit', -1)">-</button>
-                    <span id="val-vit">0</span>
-                    <button onclick="changeAttr('vit', 1)">+</button>
+                <!-- Vitalidade -->
+                <div class="attr-card">
+                    <div class="attr-label">VITALID. <span id="bon-vit" class="stat-bonus"></span></div>
+                    <div class="attr-controls">
+                        <button class="mini-btn" onclick="changeAttr('vit', -1)">-</button>
+                        <span id="val-vit" class="attr-val">0</span>
+                        <button class="mini-btn" onclick="changeAttr('vit', 1)">+</button>
+                    </div>
                 </div>
             </div>
 
-            <hr style="border-color: #444; margin: 10px 0;">
+            <div class="separator"></div>
 
             <!-- STATUS DERIVADOS -->
             <div class="derived-stats">
-                <div>ATQ: <span id="d-atk" style="margin-left:4px">0</span><span id="bon-atk" class="stat-bonus"></span></div>
-                <div>DEF: <span id="d-def" style="margin-left:4px">0</span><span id="bon-def" class="stat-bonus"></span></div>
-                <div>M.ATQ: <span id="d-matk" style="margin-left:4px">0</span><span id="bon-matk" class="stat-bonus"></span></div>
-                <div>ESQ: <span id="d-eva" style="margin-left:4px">0</span><span id="bon-eva" class="stat-bonus"></span></div>
-                <div>VEL: <span id="d-spd" style="margin-left:4px">0</span></div>
+                <div class="stat-box">ATQ: <span id="d-atk">0</span><span id="bon-atk" class="stat-bonus"></span></div>
+                <div class="stat-box">DEF: <span id="d-def">0</span><span id="bon-def" class="stat-bonus"></span></div>
+                <div class="stat-box">M.ATQ: <span id="d-matk">0</span><span id="bon-matk" class="stat-bonus"></span></div>
+                <div class="stat-box">ESQ: <span id="d-eva">0</span><span id="bon-eva" class="stat-bonus"></span></div>
+                <div class="stat-box full-width">VELOCIDADE: <span id="d-spd">0</span></div>
             </div>
 
             <div class="win-footer">
-                <button class="btn-confirm" onclick="confirmStats()">SALVAR</button>
-                <button class="btn-cancel" onclick="toggleStatusWindow()">FECHAR</button>
+                <button class="rpg-btn success small" onclick="confirmStats()">SALVAR</button>
+                <button class="rpg-btn danger small" onclick="toggleStatusWindow()">FECHAR</button>
             </div>
         </div>
     </div>
 
-    <!-- JANELA DE INVENTÁRIO (NOVA) -->
-    <div id="inventory-window" style="display: none;">
+    <!-- JANELA DE INVENTÁRIO (ESTRUTURA ALTERADA) -->
+    <div id="inventory-window" class="rpg-window" style="display: none;">
         <div class="win-header">
-        <span>EQUIPAMENTOS</span>
-        <span class="close-btn" onclick="toggleInventory()">&#10006;</span>
+            <span>EQUIPAMENTOS</span>
+            <span class="close-btn" onclick="toggleInventory()">&#10006;</span>
         </div>
-        <div class="equip-grid">
-            <!-- Slots de Equipamento -->
-            <div class="slot-container">
-                <div class="slot-label">Arma</div>
-                <div id="eq-weapon" class="item-slot" onclick="unequipItem('weapon')"></div>
+        <div class="win-content parchment-bg">
+            
+            <!-- Nova Estrutura em Cruz -->
+            <div class="equip-doll">
+                <div class="slot-container area-head">
+                    <div class="slot-label">Cabeça</div>
+                    <div id="eq-head" class="item-slot"></div>
+                </div>
+                
+                <div class="slot-container area-weapon">
+                    <div class="slot-label">Arma</div>
+                    <div id="eq-weapon" class="item-slot"></div>
+                </div>
+                
+                <div class="slot-container area-armor">
+                    <div class="slot-label">Peito</div>
+                    <div id="eq-armor" class="item-slot"></div>
+                </div>
+                
+                <div class="slot-container area-acc">
+                    <div class="slot-label">Acess.</div>
+                    <div id="eq-accessory" class="item-slot"></div>
+                </div>
+                
+                <div class="slot-container area-legs">
+                    <div class="slot-label">Pernas</div>
+                    <div id="eq-legs" class="item-slot"></div>
+                </div>
             </div>
-            <div class="slot-container">
-                <div class="slot-label">Cabeça</div>
-                <div id="eq-head" class="item-slot" onclick="unequipItem('head')"></div>
-            </div>
-            <div class="slot-container">
-                <div class="slot-label">Peito</div>
-                <div id="eq-armor" class="item-slot" onclick="unequipItem('armor')"></div>
-            </div>
-            <div class="slot-container">
-                <div class="slot-label">Pernas</div>
-                <div id="eq-legs" class="item-slot" onclick="unequipItem('legs')"></div>
-            </div>
-            <div class="slot-container">
-                <div class="slot-label">Acess.</div>
-                <div id="eq-accessory" class="item-slot" onclick="unequipItem('accessory')"></div>
-            </div>
-        </div>
 
-        <div class="win-header" style="margin-top: 10px;">MOCHILA</div>
-        <div id="bag-grid" class="bag-grid">
-            <!-- Slots gerados via JS -->
-        </div>
+            <div class="bag-header">MOCHILA</div>
+            <div id="bag-grid" class="bag-grid">
+                <!-- Slots gerados via JS -->
+            </div>
 
-        <div class="win-footer">
-            <button class="btn-cancel" onclick="toggleInventory()">FECHAR</button>
+            <div class="win-footer">
+                <button class="rpg-btn danger small" onclick="toggleInventory()">FECHAR</button>
+            </div>
         </div>
     </div>
 
     <!-- JANELA DE SKILLS -->
-    <div id="skills-window" style="display: none;">
+    <div id="skills-window" class="rpg-window" style="display: none;">
         <div class="win-header">
             <span>HABILIDADES</span>
             <span class="close-btn" onclick="toggleSkills()">&#10006;</span>
         </div>
-        <div class="win-content">
+        <div class="win-content parchment-bg">
             <div id="skills-list" class="skills-grid">
                 <!-- Lista será gerada via JS -->
             </div>
         </div>
         <div class="win-footer">
-            <button class="btn-cancel" onclick="toggleSkills()">FECHAR</button>
+            <button class="rpg-btn danger small" onclick="toggleSkills()">FECHAR</button>
         </div>
     </div>    
 
     <!-- DEBUG PANEL -->
     <div id="debug-panel" style="display: none;">
-        <div>FPS: <span id="dbg-fps" style="color: #ffff00">0</span></div>
-        <div>PING: <span id="dbg-ping" style="color: #00ff00">0</span>ms</div>
+        <div>FPS: <span id="dbg-fps">0</span></div>
+        <div>PING: <span id="dbg-ping">0</span>ms</div>
         <div>MAPA: <span id="dbg-map">---</span></div>
         <div>POS: <span id="dbg-pos">0.0, 0.0</span></div>
         <div>PLAYERS: <span id="dbg-players">0</span></div>
     </div>
 
-<!-- HOTBAR (ATALHOS) -->
+    <!-- HOTBAR -->
     <div id="hotbar-container">
-        <div class="hotkey-slot" data-key="1"><span class="key-number">1</span><div id="hotkey-1" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
-        <div class="hotkey-slot" data-key="2"><span class="key-number">2</span><div id="hotkey-2" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
-        <div class="hotkey-slot" data-key="3"><span class="key-number">3</span><div id="hotkey-3" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
-        <div class="hotkey-slot" data-key="4"><span class="key-number">4</span><div id="hotkey-4" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
-        <div class="hotkey-slot" data-key="5"><span class="key-number">5</span><div id="hotkey-5" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
-        <div class="hotkey-slot" data-key="6"><span class="key-number">6</span><div id="hotkey-6" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
+        <div class="hotbar-frame">
+            <div class="hotkey-slot" data-key="1"><span class="key-number">1</span><div id="hotkey-1" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
+            <div class="hotkey-slot" data-key="2"><span class="key-number">2</span><div id="hotkey-2" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
+            <div class="hotkey-slot" data-key="3"><span class="key-number">3</span><div id="hotkey-3" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
+            <div class="hotkey-slot" data-key="4"><span class="key-number">4</span><div id="hotkey-4" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
+            <div class="hotkey-slot" data-key="5"><span class="key-number">5</span><div id="hotkey-5" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
+            <div class="hotkey-slot" data-key="6"><span class="key-number">6</span><div id="hotkey-6" class="hotkey-content"></div><div class="hotkey-qtd"></div></div>
+        </div>
     </div>
 
     <!-- CHAT -->
-    <div id="chat-container" style="display: none; opacity: 0.5;">
+    <div id="chat-container" style="display: none; opacity: 0.8;">
         <div id="chat-history"></div>
         <div class="chat-input-wrapper">
-            <input type="text" id="chat-input" maxlength="120" placeholder="Tecle 'Enter' para conversar..." autocomplete="off">
+            <input type="text" id="chat-input" maxlength="120" placeholder="Pressione Enter para falar..." autocomplete="off">
         </div>
     </div>
 
-    <!-- CANVAS 3D -->
-    <div id="canvas-container"></div>
-    <!-- DANOS FLUTUANTES -->
-    <div id="damage-container"></div>
-
-    <!-- BARRA DE CAST (CONJURAÇÃO) -->
+    <!-- BARRA DE CAST -->
     <div id="cast-bar-container" style="display: none;">
-        <div id="cast-name">Bola de Fogo</div>
-        <div class="cast-bg">
+        <div id="cast-name">Conjuração</div>
+        <div class="cast-frame">
             <div id="cast-fill"></div>
         </div>
-    </div>    
+    </div>
 
-    <!-- MOVA O TOOLTIP PARA CÁ (Fora de tudo, direto no body) -->
+    <!-- CANVAS 3D / DANOS / TOOLTIP -->
+    <div id="canvas-container"></div>
+    <div id="damage-container"></div>
     <div id="item-tooltip" style="display:none;"></div>
 
-    <!-- LIBS -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    
     <!-- MODAL DE DROP -->
-    <div id="drop-modal" style="display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:3000; align-items:center; justify-content:center;">
-        <div class="panel-box" style="width: 300px; background: #111; border: 2px solid #a00;">
-            <h2 style="color: #f55; margin-bottom: 15px;">JOGAR NO CHÃO?</h2>
-            <div id="drop-item-name" style="color: white; margin-bottom: 15px; font-weight:bold;">Item</div>
+    <div id="drop-modal" style="display: none;">
+        <div class="rpg-panel small-modal">
+            <h2 class="modal-title">JOGAR NO CHÃO?</h2>
+            <div id="drop-item-name" class="highlight-text">Item</div>
             
-            <div id="drop-qtd-container" style="display:none; margin-bottom: 15px;">
-                <span style="color:#aaa; font-size:12px;">Quantidade (Máx: <span id="lbl-max-qtd"></span>):</span><br>
-                <input type="number" id="drop-qtd-input" min="1" value="1" style="width: 80px; text-align: center; padding:5px; margin-top:5px;">
-            </div
+            <div id="drop-qtd-container" style="display:none; margin: 15px 0;">
+                <label>Quantidade:</label>
+                <input type="number" id="drop-qtd-input" min="1" value="1" class="rpg-input-number">
+            </div>
 
-            <div style="display:flex; gap: 10px; justify-content:center;">
-                <button onclick="confirmDrop()" style="background:#a00; border:none; width:auto; padding:10px 20px;">JOGAR</button>
-                <button onclick="closeDropModal()" style="background:#444; border:none; width:auto; padding:10px 20px;">CANCELAR</button>
+            <div class="modal-actions">
+                <button onclick="confirmDrop()" class="rpg-btn danger small">JOGAR</button>
+                <button onclick="closeDropModal()" class="rpg-btn small">CANCELAR</button>
             </div>
         </div>
     </div>
-        <!-- GAME LOGIC -->
+
+    <!-- LIBS & GAME -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script type="module" src="game.js"></script>
 </body>
 </html>
