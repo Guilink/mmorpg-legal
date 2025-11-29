@@ -35,7 +35,7 @@ const WEAPON_TYPES = {
 const SKILL_DATABASE = {
     'fireball': {
         id: 'fireball', name: "Bola de Fogo", type: 'CASTING',
-        castTime: 1500, cooldown: 3000, range: 15, manaCost: 10,
+        castTime: 1000, cooldown: 3000, range: 15, manaCost: 10,
         damage: 40, animation: 'ATTACK',
         icon: 'skill_fireball.png',
         projectileType: 'FIREBALL',
@@ -63,10 +63,10 @@ const SKILL_DATABASE = {
     },
     'meteor': {
         id: 'meteor', name: "Chuva de Meteoros", type: 'AREA',
-        castTime: 2000, 
+        castTime: 3000, 
         cooldown: 10000, 
         range: 12.0,     
-        radius: 3.0,     
+        radius: 2.5,     
         manaCost: 25,
         damage: 80,      
         animation: 'ATTACK', 

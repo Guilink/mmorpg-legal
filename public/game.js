@@ -1,7 +1,6 @@
-// Configuração
+// game.js
 import { CONFIG } from './js/Config.js';
 
-// Gerenciamento de UI
 import {
     UI,
     addLogMessage,
@@ -26,7 +25,6 @@ import {
     updateLoadingBar
 } from './js/UIManager.js';
 
-// Gerenciamento de Inputs
 import {
     keys,
     setupInputs,
@@ -34,7 +32,6 @@ import {
     setChatActive
 } from './js/InputManager.js';
 
-// Efeitos visuais
 import {
     AreaCursor,
     createChatBubble,
@@ -47,17 +44,15 @@ import {
     showDamageNumber
 } from './js/VFX.js';
 
-// Áudio
 import { AudioManager } from './js/AudioManager.js';
-
 
 // --- INICIALIZAÇÃO DO SOCKET ---
 const socket = io();
 
 // Configura o UIManager para enviar atualizações para o servidor
-    setHotbarChangeCallback((newState) => {
-        socket.emit('update_hotbar', newState);
-    });
+setHotbarChangeCallback((newState) => {
+    socket.emit('update_hotbar', newState);
+});
 
 // --- VARIÁVEIS GLOBAIS ---
 let scene, camera, renderer, clock;
@@ -75,20 +70,18 @@ let lastFpsTime = 0;
 let itemDB = {};
 let lastPickupTime = 0;
 let myInventory = []; 
-let myEquipment = {}; // Armazena o equipamento atual para sabermos a arma
+let myEquipment = {}; 
 let lastRenderedTargetId = null;
 let pendingSkill = null; 
-let localCooldowns = {}; // Armazena quando o cooldown de cada skill VAI ACABAR (Timestamp)
+let localCooldowns = {}; 
 let localItemCooldowns = {};
-let castingTimer = null; // Armazena o timer do client para cancelar se andar
-let WEAPON_TYPES = {}; // Constantes vindas do servidor
+let castingTimer = null; 
+let WEAPON_TYPES = {}; 
 let ITEM_TYPES = {};
 
-// No UIManager ou referenciando direto
 const castBarContainer = document.getElementById('cast-bar-container');
 const castFill = document.getElementById('cast-fill');
 const castName = document.getElementById('cast-name');
-let castTween = null; // Para animar a barra via JS se precisar, ou usar CSS transition
 
 const pendingLoads = new Set();
 const tempVector = new THREE.Vector3();
@@ -96,9 +89,7 @@ const tempOrigin = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
-let bgmAudio = new Audio();
-bgmAudio.loop = true;
-bgmAudio.volume = 0.3;
+// Nota: bgmAudio antigo removido. Agora usamos AudioManager.playBGM
 
 let isMapLoading = false;
 let isPlayerLoading = false;
@@ -122,14 +113,9 @@ let myAttributes = { str: 5, agi: 5, int: 5, vit: 5 };
 let skillDB = {};
 let keyboardCursorPos = new THREE.Vector3();
 
-// BLOQUEIO GLOBAL DE ARRASTAR (Cirúrgico)
-// Impede que qualquer imagem ou texto vire um "fantasma" ao ser arrastado
+// --- BLOQUEIOS E UTILS ---
 window.addEventListener('dragstart', (e) => e.preventDefault());
-
-// BLOQUEIO TOTAL DE SELEÇÃO (Anti-Azulzinho)
-// Impede que textos e imagens fiquem azuis ao arrastar o mouse
 window.addEventListener('selectstart', (e) => {
-    // Se NÃO for um campo de digitar (Input), proíbe a seleção
     if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
         e.preventDefault();
     }
@@ -144,6 +130,9 @@ window.toggleStatusWindow = () => {
 window.changeAttr = changeAttr; 
 
 window.performLogin = () => {
+    // CORREÇÃO: Som ao clicar no botão Entrar
+    AudioManager.play2D('ui_click'); 
+    
     const u = UI.inLoginUser.value;
     const p = UI.inLoginPass.value;
     if(!u || !p) return showAuthError('Preencha todos os campos', 'login');
@@ -151,6 +140,7 @@ window.performLogin = () => {
 };
 
 window.performRegister = () => {
+    AudioManager.play2D('ui_click'); // Adicionei aqui também por consistência
     const u = UI.inRegUser.value;
     const p = UI.inRegPass.value;
     const p2 = UI.inRegPass2.value;
@@ -165,7 +155,7 @@ window.confirmStats = () => {
     toggleStatusWindow(); 
 };
 
-window.toggleSkills = toggleSkills; // Permite que o botão HTML onclick="toggleSkills()" funcione
+window.toggleSkills = toggleSkills; 
 
 window.toggleInventory = () => {
     const el = document.getElementById('inventory-window');
@@ -176,17 +166,21 @@ window.toggleInventory = () => {
         el.style.display = 'none';
         if (tooltip) tooltip.style.display = 'none';
     }
+    AudioManager.play2D('ui_click');
 };
 
 window.useItem = (index) => socket.emit('use_item', index);
-window.unequipItem = (slot) => socket.emit('unequip_item', slot);
+
+window.unequipItem = (slot) => {
+    socket.emit('unequip_item', slot);
+    AudioManager.play2D('equip');
+};
 
 window.addEventListener('mousedown', (e) => {
     if (getIsChatActive()) return;
 
     // --- MODO DE MIRA (SKILL DE ÁREA) ---
     if (pendingSkill) {
-        // Botão Direito: Cancela
         if (e.button === 2) {
             pendingSkill = null;
             AreaCursor.setVisible(false);
@@ -194,7 +188,6 @@ window.addEventListener('mousedown', (e) => {
             return;
         }
 
-// Botão Esquerdo: Dispara Skill de Área
         if (e.button === 0) {
             let targetPoint = null;
             if (keys['shift']) { targetPoint = cursorWorldPos.clone(); } 
@@ -205,20 +198,15 @@ window.addEventListener('mousedown', (e) => {
                 const intersects = raycaster.intersectObjects(environmentLayer.children, true); 
                 if (intersects.length > 0) targetPoint = intersects[0].point; 
             }
-            
-if (targetPoint) {
+            if (targetPoint) {
                 executePendingSkill(targetPoint);
             }
         }
-        return; // Impede clicar em monstros/andar enquanto mira
+        return; 
     }
-    // -------------------------------------
 
-    // Só botão esquerdo daqui pra baixo (Seleção normal)
     if (e.button !== 0) return;
 
-    // ... (Resto do código original de selecionar item/monstro) ...
-    // Copie a lógica que já fizemos antes para selecionar Itens e Monstros/Players aqui
     mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
@@ -230,6 +218,8 @@ if (targetPoint) {
         const target = intersectItems[0].object;
         if (target.userData.isGroundItem) {
             socket.emit('pickup_request', target.userData.uniqueId);
+            // SOM DE PICKUP TOCADO AQUI POR FEEDBACK IMEDIATO (Client-Prediction)
+            AudioManager.play2D('pickup');
             return; 
         }
     }
@@ -255,35 +245,21 @@ if (targetPoint) {
 });
 
 window.addEventListener('mousemove', (e) => {
-    // 1. Atualiza vetor do mouse
     mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-
-    // 2. Lógica de Mira (Skill de Área)
     if (pendingSkill && !keys['shift']) {
         raycaster.setFromCamera(mouse, camera); 
         const intersects = raycaster.intersectObjects(environmentLayer.children, true); 
         if (intersects.length > 0) {
-            // Atualiza a posição lógica
             keyboardCursorPos.copy(intersects[0].point);
-            
-            // --- CORREÇÃO: ATUALIZA O VISUAL DO CÍRCULO ---
             AreaCursor.updatePosition(keyboardCursorPos);
-            // ----------------------------------------------
         }
     }
-
-    // 3. Limpeza de cursor (Deixa o CSS decidir)
     document.body.style.cursor = ""; 
 });
 
-function playBGM(file) {
-    if (bgmAudio.src.includes(file)) return; 
-    bgmAudio.src = file;
-    bgmAudio.play().catch(e => console.log("Audio: Clique necessário"));
-}
 window.addEventListener('click', () => {
-    if(UI.loginScreen.style.display !== 'none') playBGM('assets/bgm1.webm');
+    if(UI.loginScreen.style.display !== 'none') AudioManager.playBGM('bgm_login');
 }, { once: true });
 
 // --- SOCKET EVENTS ---
@@ -291,7 +267,7 @@ socket.on('register_success', (msg) => { alert(msg); toggleForms(); });
 socket.on('login_error', (msg) => showAuthError(msg, 'login'));
 
 socket.on('login_success', (data) => {
-    playBGM('assets/bgm2.webm');
+    AudioManager.playBGM('bgm_game');
     showGameInterface(); 
     
     myUsername = data.playerData.username; 
@@ -306,8 +282,8 @@ socket.on('login_success', (data) => {
     ITEM_TYPES = data.itemTypes || {};
 
     myInventory = data.inventory;
-    myEquipment = data.equipment || {}; // Salva equipamento
-    loadHotbarState(data.hotbar); // Carrega a hotbar salva
+    myEquipment = data.equipment || {}; 
+    loadHotbarState(data.hotbar); 
     itemDB = data.itemDB;
     skillDB = data.skillDB;
 
@@ -325,14 +301,14 @@ socket.on('login_success', (data) => {
     }
 });
 
-    socket.on('ground_item_spawn', (item) => GroundItemManager.spawn(item, scene, itemDB));
-    socket.on('ground_item_remove', (id) => GroundItemManager.remove(id, scene));
-    socket.on('ground_item_expire', (id) => GroundItemManager.expire(id, scene));
+socket.on('ground_item_spawn', (item) => GroundItemManager.spawn(item, scene, itemDB));
+socket.on('ground_item_remove', (id) => GroundItemManager.remove(id, scene));
+socket.on('ground_item_expire', (id) => GroundItemManager.expire(id, scene));
 
-    socket.on('inventory_update', (data) => {
+socket.on('inventory_update', (data) => {
     myInventory = data.inventory; 
-    myEquipment = data.equipment; // Atualiza equipamento
-    UI.updateInventory(data.inventory, data.equipment, itemDB);
+    myEquipment = data.equipment; 
+    UI.updateInventory(data.inventory, data.equipment, itemDB, skillDB);
     renderHotbar(myInventory, itemDB, skillDB);
 });
 
@@ -347,11 +323,9 @@ socket.on('map_changed', (data) => {
 });
 
 socket.on('update_stats', (data) => {
-    // 1. Guardamos o estado anterior para comparar
     const oldPoints = myPoints;
     const oldLevel = myLevel;
 
-    // 2. Atualizamos as globais
     myStats = data.stats; 
     myLevel = data.level;
     myXp = data.xp;
@@ -359,28 +333,16 @@ socket.on('update_stats', (data) => {
     myAttributes = data.attributes;
     myPoints = data.points;
 
-    // 3. Atualiza HUD
     updateHUD(myStats, myLevel, myXp, myNextXp);
     if(document.getElementById('st-points')) document.getElementById('st-points').textContent = myPoints;
 
-    // 4. LÓGICA ROBUSTA DA JANELA DE STATUS
     if (UI.statusWindow.style.display !== 'none') {
-        
-        // Verifica se houve mudança CRÍTICA (Upar de nível ou gastar pontos)
         const isStructuralChange = (myPoints !== oldPoints || myLevel !== oldLevel);
-
         if (isStructuralChange) {
-            // Se mudou nível/pontos, fazemos um RESET TOTAL (false no último parâmetro).
-            // Isso garante que se você upar, os novos pontos apareçam corretamente.
             setupStatusWindowData(myAttributes, myPoints, myStats, false);
         } else {
-            // Se NÃO mudou nível/pontos (ex: Dano, Troca de Equipamento, Buffs),
-            // chamamos com TRUE. Isso recalcula ATQ/DEF baseados no novo equipamento,
-            // mas MANTÉM seus pontos distribuídos onde você deixou.
             setupStatusWindowData(myAttributes, myPoints, myStats, true);
         }
-        
-        // Redesenha os números na tela
         refreshStatusWindow();
     }
 });
@@ -416,7 +378,6 @@ socket.on('monsters_update', (pack) => {
         serverIds.add(d.id);
         if (d.hp <= 0) {
             if (monsters[d.id]) {
-                // Atualiza posição final caso ele tenha sido empurrado no último frame
                 monsters[d.id].position.set(d.position.x, d.position.y, d.position.z);
                 performVisualDeath(d.id);
             }
@@ -438,11 +399,7 @@ socket.on('monsters_update', (pack) => {
 const TOLERANCE = 2000; 
     Object.keys(monsters).forEach(localId => {
         const m = monsters[localId];
-        
-        // SE NÃO VEIO NO PACOTE DO SERVIDOR:
         if(!serverIds.has(localId)) {
-            // Proteção: Se ele está marcado como "Morrendo" (esperando delay), NÃO deleta ainda.
-            // A função performVisualDeath vai deletar ele quando o tempo acabar.
             if (m.userData.isDying || m.userData.deathScheduled) return;
 
             if (m.userData.lastSeen && (now - m.userData.lastSeen > TOLERANCE)) {
@@ -462,56 +419,52 @@ socket.on('monster_dead', (id) => {
 });
 
 socket.on('projectile_fired', (data) => {
-    // 1. Acha quem atirou
     let shooter = null;
     if (data.shooterId === socket.id) shooter = myPlayer;
     else if (otherPlayers[data.shooterId]) shooter = otherPlayers[data.shooterId];
     else if (monsters[data.shooterId]) shooter = monsters[data.shooterId];
 
-    // 2. Acha quem é o alvo
     let target = null;
     if (data.targetId === socket.id) target = myPlayer;
     else if (otherPlayers[data.targetId]) target = otherPlayers[data.targetId];
     else if (monsters[data.targetId]) target = monsters[data.targetId];
 
-    // 3. Cria a flecha
     if (shooter && target) {
-        // --- SOM DE DISPARO ---
         if (data.type === 'FIREBALL') {
             AudioManager.play3D('cast_ranged', shooter.position);
         }        
-        // Passe data.type aqui
         ProjectileManager.spawn(scene, shooter, target, data.type); 
     }
 });
 
 socket.on('cast_start', (data) => {
-    // Se SOU EU castando, mostra a barra
+    // Som de Loop de Conjuração
     if (data.id === socket.id) {
         castBarContainer.style.display = 'block';
         castName.textContent = data.skillName;
         castFill.style.width = '0%';
-        castFill.style.transition = 'none'; // Reseta
-        
-        // Força reflow
+        castFill.style.transition = 'none'; 
         void castFill.offsetWidth; 
-
         castFill.style.transition = `width ${data.time}ms linear`;
         castFill.style.width = '100%';
         
-        // Esconde depois que acabar
+        AudioManager.playLoop('conjure'); // Inicia loop
+
         setTimeout(() => {
             castBarContainer.style.display = 'none';
+            AudioManager.stopLoop('conjure'); // Para loop ao terminar
         }, data.time);
+    } else {
+        // Se for outro player castando (opcional: tocar som 3D dele)
+        // Por enquanto, o loop 'conjure' é só pro player local
     }
-    
-    // Opcional: Mostrar uma animação/efeito em cima do personagem de quem está castando (mesmo se for outro player)
 });
 
 socket.on('cast_interrupted', (id) => {
     if (id === socket.id) {
         castBarContainer.style.display = 'none';
         castFill.style.width = '0%';
+        AudioManager.stopLoop('conjure'); // Para loop ao interromper
     }
 });
 
@@ -522,13 +475,10 @@ socket.on('chat_message', (data) => {
 });
 
 socket.on('damage_dealt', (d) => {
-    // Função interna para exibir o dano (agora com suporte a delay)
     const renderDamage = () => {
         let pos = null;
         const color = d.isMonster ? '#ffff00' : '#ff0000'; 
 
-        // Tenta achar o alvo vivo primeiro para pegar a posição atualizada
-        // (Isso é bom pois se o alvo andar enquanto a bola de fogo voa, o dano aparece onde ele ESTÁ, não onde estava)
         let targetObj = null;
         if (d.targetId === socket.id) targetObj = myPlayer;
         else if (monsters[d.targetId]) targetObj = monsters[d.targetId];
@@ -542,88 +492,76 @@ socket.on('damage_dealt', (d) => {
 
         if (pos) {
             showDamageNumber(d.damage, pos, color, camera); 
-            // --- SOM DE IMPACTO (NOVO) ---
-            let soundKey = 'hit_basic'; // Padrão (Soco/Espada)
             
-            if (d.dmgType === 'PROJECTILE' || d.dmgType === 'AREA') {
-                soundKey = 'hit_magic'; // Magia explodindo
-            } 
-            else if (d.dmgType === 'MELEE') { 
-                soundKey = 'hit_skill'; // Skill física (Golpe Feroz)
+            // --- LÓGICA DE ÁUDIO CORRIGIDA ---
+            let soundKey = '';
+
+            // 1. Monstro bateu no Player?
+            if (monsters[d.attackerId] && d.targetId === socket.id) {
+                soundKey = 'enemy_damage';
             }
-            
-            AudioManager.play3D(soundKey, pos);
+            // 2. Player bateu em algo?
+            else {
+                // Tenta pegar do Config se for skill/magia conhecida
+                if (d.dmgType === 'PROJECTILE' || d.dmgType === 'AREA') {
+                    soundKey = 'hit_magic';
+                } else if (d.dmgType === 'MELEE') {
+                    // Se foi skill melee (Golpe Feroz) ou hit básico
+                    // Aqui você poderia refinar checando a skill no DB se o servidor mandasse o skillId
+                    soundKey = 'hit_skill'; 
+                    if (d.dmgType === 'BASIC') soundKey = 'hit_basic'; // Assumindo que servidor mande BASIC para hit normal
+                } else {
+                    soundKey = 'hit_basic'; // Fallback
+                }
+            }
+
+            if (soundKey) AudioManager.play3D(soundKey, pos);
         }
     };
 
-    // --- CÁLCULO DE SINCRONIA (DELAY) ---
     let delay = 0;
-
-    // 1. ATAQUE BÁSICO ou MELEE SKILL
-    // A animação de ataque demora uns ~800ms total, mas o "hit" é no meio (~400ms)
     if (d.dmgType === 'BASIC' || d.dmgType === 'MELEE') {
         delay = 400; 
-    }
-    
-    // 2. MAGIA DE ÁREA (METEORO)
-    // O meteoro cai de 15m a 25m/s. Leva aprox 0.6s a 1.0s.
-    // Como agora é uma chuva, colocamos uma média para aparecer junto com a "muvuca".
-    else if (d.dmgType === 'AREA') {
+    } else if (d.dmgType === 'AREA') {
         delay = 800;
-    }
-
-    // 3. PROJÉTIL (BOLA DE FOGO / FLECHA)
-    // Aqui calculamos a distância real para saber o tempo de voo!
-    else if (d.dmgType === 'PROJECTILE') {
+    } else if (d.dmgType === 'PROJECTILE') {
         let attackerPos = null;
-        
-        // Descobre quem atirou
         if (d.attackerId === socket.id) attackerPos = myPlayer.position;
         else if (monsters[d.attackerId]) attackerPos = monsters[d.attackerId].position;
         else if (otherPlayers[d.attackerId]) attackerPos = otherPlayers[d.attackerId].position;
 
-        // Descobre onde é o alvo
         let targetPos = null;
         if (d.x !== undefined) targetPos = new THREE.Vector3(d.x, 0, d.z);
         
         if (attackerPos && targetPos) {
             const dist = attackerPos.distanceTo(targetPos);
-            const speed = 12.0; // Velocidade da Fireball (definida no VFX.js)
-            // Tempo = Distância / Velocidade * 1000 (ms)
+            const speed = 12.0; 
             delay = (dist / speed) * 1000;
         } else {
-            // Fallback se não achar posições
             delay = 200;
         }
     }
 
-    // --- NOVA LÓGICA DE MORTE SINCRONIZADA ---
-    // Se esse dano matou o alvo, salvamos o delay no objeto dele
     if (d.newHp <= 0) {
-        let targetObj = monsters[d.targetId]; // Só nos preocupamos com monstros aqui
+        let targetObj = monsters[d.targetId]; 
         if (targetObj) {
-            // Salva o tempo que ele tem que "fingir que tá vivo" antes de sumir
             targetObj.userData.deathDelay = delay;
-            targetObj.userData.isDying = true; // Marca para não ser deletado por limpeza de rotina
+            targetObj.userData.isDying = true; 
         }
     }    
 
-    // Aplica o atraso calculado
     if (delay > 0) {
         setTimeout(renderDamage, delay);
     } else {
         renderDamage();
     }
 });
+
 socket.on('play_vfx', (data) => {
     let pos = null;
-
-    // Se veio coordenadas, usa elas
     if (data.x !== undefined && data.z !== undefined) {
         pos = new THREE.Vector3(data.x, 0, data.z);
-    } 
-    // Se veio ID, busca o objeto
-    else {
+    } else {
         let targetObj = null;
         if (data.targetId === socket.id) targetObj = myPlayer;
         else if (otherPlayers[data.targetId]) targetObj = otherPlayers[data.targetId];
@@ -633,27 +571,22 @@ socket.on('play_vfx', (data) => {
 
     if (pos) {
         if (data.type === 'METEOR_EXPLOSION') {
-            AudioManager.play3D('cast_area', new THREE.Vector3(data.x, 0, data.z)); // Toca som de área
+            AudioManager.play3D('cast_area', pos);
             ParticleManager.spawnMeteorShower(scene, pos.x, pos.z);
         } 
         else if (data.type === 'POTION_HP') {
-            AudioManager.play3D('cast_support', pos);  // Toca som de suporte
-            // NOVO: Usa o efeito suave
+            AudioManager.play3D('potion', pos);
             ParticleManager.spawnHealEffect(scene, pos, 0xff0000); 
         }
         else if (data.type === 'POTION_MP') {
-            AudioManager.play3D('cast_support', pos);  // Toca som de suporte
-            // NOVO: Usa o efeito suave azul
+            AudioManager.play3D('potion', pos);
             ParticleManager.spawnHealEffect(scene, pos, 0x0000ff);
         }
     }
 });
 
 socket.on('server_stats', (data) => { totalOnline = data.total; });
-
-socket.on('level_up_event', () => {
-    AudioManager.play2D('levelup');
-});
+socket.on('level_up_event', () => { AudioManager.play2D('levelup'); });
 
 // --- ENGINE & INITIALIZATION ---
 function initEngine() {
@@ -735,61 +668,44 @@ function initEngine() {
         const slotData = getHotkeyItem(slotIndex);
         if (!slotData) return; 
 
-        cancelAreaTargeting(); // Cancela o targeting de área se estiver ativo
-    // --- USO DE ITEM ---
+        cancelAreaTargeting(); 
         if (slotData.type === 'ITEM') {
             const inventoryIndex = myInventory.findIndex(slot => slot.id === slotData.id);
-            
             if (inventoryIndex !== -1) {
                 const itemConfig = itemDB[slotData.id];
-                
-                // --- CORREÇÃO DO BUG VISUAL ---
                 if (itemConfig && itemConfig.cooldown) {
                     const now = Date.now();
-                    
-                    // 1. Verifica se já está em cooldown localmente
                     if (localItemCooldowns[slotData.id] && now < localItemCooldowns[slotData.id]) {
-                        // Se estiver, PARA TUDO. Não reseta animação, não manda socket.
                         addLogMessage('SISTEMA', 'Item em espera.', 'system');
                         return; 
                     }
-
-                    // 2. Se passou, inicia a animação e salva o novo tempo final
                     startCooldownUI(slotData.id, itemConfig.cooldown, 'ITEM');
                     localItemCooldowns[slotData.id] = now + itemConfig.cooldown;
-                    AudioManager.play2D('potion'); // Toca som de uso de item
+                    // Som de poção/item movido para socket ou UI, mas aqui é um bom lugar para feedback imediato se não for equipamento
+                    if (itemConfig.type === ITEM_TYPES.CONSUMABLE) AudioManager.play2D('potion');
                 }
-                // -----------------------------
-
                 socket.emit('use_item', inventoryIndex);
             }
         }
-        // --- USO DE SKILL ---
         else if (slotData.type === 'SKILL') {
             const skill = skillDB[slotData.id];
             if (!skill) return;
 
-            // 1. VERIFICA COOLDOWN LOCAL
             const now = Date.now();
             if (localCooldowns[skill.id] && now < localCooldowns[skill.id]) {
                 addLogMessage('SISTEMA', 'Habilidade em recarga.', 'system');
                 return; 
             }
-
-            // 2. VERIFICA MANA LOCAL
             if (myStats.mp < skill.manaCost) {
                 addLogMessage('SISTEMA', 'Mana insuficiente.', 'system');
                 return;
             }
 
-            // 3. Lógica de Auto-Target / Targeting
-            // (Isso atualiza o currentTargetId se necessário)
             const GLOBAL_CHASE_LIMIT = 15.0;
             
             if (skill.type === 'MELEE') {
                 checkAndSwapMeleeTarget();
             } else if ((skill.type === 'CASTING' || skill.type === 'INSTANT') && !currentTargetId) {
-                // Tenta achar alvo se não tiver
                 const foundId = findBestAutoTarget(skill.range);
                 if (foundId) {
                     currentTargetId = foundId;
@@ -800,58 +716,39 @@ function initEngine() {
                 }
             }
 
-            // 4. PREPARAÇÃO DE ÁREA (Meteoro) - Lógica separada
         if (skill.type === 'AREA') {
             pendingSkill = skill;
-            // Inicializa cursor nos pés do jogador
             keyboardCursorPos.copy(myPlayer.position); 
-            
             AreaCursor.setVisible(true, skill.radius);
-            AreaCursor.updatePosition(keyboardCursorPos); // Atualiza visual na hora
-            
+            AreaCursor.updatePosition(keyboardCursorPos); 
             addLogMessage('SISTEMA', 'Selecione a área.', 'system');
             return; 
         }
-
-            // --- CORREÇÃO ROBUSTA AQUI: VALIDAÇÃO PRÉVIA DO CLIENTE ---
-            // Antes de enviar ou gastar cooldown, verificamos se é possível usar a skill.
             
-            // A) Precisa de Alvo? (MELEE, CASTING, INSTANT precisam. SUPPORT não precisa pois é self-cast)
             if (skill.type !== 'SUPPORT') {
-                
-                // Se não tem alvo selecionado (e o auto-target lá em cima falhou)
                 if (!currentTargetId) {
                     addLogMessage('SISTEMA', 'Nenhum alvo encontrado.', 'system');
-                    return; // PARA AQUI! Não inicia cooldown.
+                    return; 
                 }
-
-                // B) Validação de Alcance (Range)
                 const targetObj = monsters[currentTargetId] || otherPlayers[currentTargetId];
                 if (targetObj) {
                     const dist = myPlayer.position.distanceTo(targetObj.position);
-                    // Tolerância leve de 0.5m para compensar lag visual
                     if (dist > skill.range + 0.5) {
                         addLogMessage('SISTEMA', 'Alvo fora de alcance.', 'system');
-                        return; // PARA AQUI! Não inicia cooldown.
+                        return; 
                     }
-
-                    // C) Validação de Ângulo (Opcional, mas bom para Ranged/Casting)
                     if (skill.type === 'CASTING' || skill.type === 'INSTANT') {
                         if (!isTargetInFront(targetObj)) {
                             addLogMessage('SISTEMA', 'Precisa estar de frente.', 'system');
-                            return; // PARA AQUI!
+                            return; 
                         }
                     }
                 } else {
-                    // ID existe mas objeto sumiu (raro, mas possível)
                     currentTargetId = null;
                     return;
                 }
             }
-
-            // --- SE PASSOU POR TUDO, EXECUTA ---
             
-            // Vira o char para o alvo (se tiver)
             if (currentTargetId) {
                 const targetObj = monsters[currentTargetId] || otherPlayers[currentTargetId];
                 if (targetObj) {
@@ -864,10 +761,8 @@ function initEngine() {
             
             if (skill.type === 'MELEE') playAnim(myPlayer, 'ATTACK');
 
-            // Envia para o servidor
             socket.emit('use_skill', { skillId: slotData.id, targetId: currentTargetId });
 
-            // Inicia Cooldown Visual
             if (skill.castTime > 0) {
                 if (castingTimer) clearTimeout(castingTimer);
                 castingTimer = setTimeout(() => {
@@ -910,7 +805,6 @@ function initEngine() {
             socket.emit('player_update', { position: myPlayer.position, rotation: myPlayer.rotation.y, animation: anim });
         },
         () => { 
-            // ATAQUE (F)
             const now = Date.now();
             if (!getIsChatActive() && !isAttacking && (now - lastAttackTime > ATTACK_COOLDOWN)) {
                 performAttack(); 
@@ -919,7 +813,7 @@ function initEngine() {
         },
         () => window.toggleStatusWindow(), 
         () => window.toggleInventory(),             
-        () => { // PEGAR ITEM (Q)
+        () => { 
                 if(!myPlayer) return;
                 const now = Date.now();
                 if (now - lastPickupTime < 1000) return; 
@@ -930,16 +824,18 @@ function initEngine() {
                     const dist = myPlayer.position.distanceTo(sprite.position);
                     if (dist < minDist) { minDist = dist; closestId = sprite.userData.uniqueId; }
                 });
-                if (closestId) socket.emit('pickup_request', closestId);
+                if (closestId) {
+                    socket.emit('pickup_request', closestId);
+                    AudioManager.play2D('pickup'); // Som ao pegar com tecla Q
+                }
         },
         (keyNumber) => window.triggerHotkey(keyNumber - 1),
         () => selectNextTarget(),
-        () => window.toggleSkills() // Tecla S
+        () => window.toggleSkills() 
     );
     
     document.addEventListener('keyup', (e) => {
         if (e.key === 'Shift' && pendingSkill) {
-            // Dispara onde o cursor (teclado ou mouse) estiver agora
             executePendingSkill(keyboardCursorPos);
         }
     });    
@@ -951,7 +847,6 @@ function initEngine() {
         renderer.setSize(window.innerWidth, window.innerHeight); 
     });
 
-    // Lógica de Ping (a cada 2 segundos)
     setInterval(() => {
         socket.emit('ping_check', Date.now());
     }, 2000);
@@ -961,36 +856,28 @@ function initEngine() {
         const el = document.getElementById('dbg-ping');
         if (el) {
             el.textContent = latency;
-            // Cores baseadas na qualidade do ping
-            if (latency < 100) el.style.color = '#00ff00';      // Verde (Bom)
-            else if (latency < 200) el.style.color = '#ffff00'; // Amarelo (Médio)
-            else el.style.color = '#ff0000';                    // Vermelho (Ruim)
+            if (latency < 100) el.style.color = '#00ff00';      
+            else if (latency < 200) el.style.color = '#ffff00'; 
+            else el.style.color = '#ff0000';                    
         }
     });    
 
     animate();
 }
 
-// --- NOVA FUNÇÃO DE AUTO-AIM (Busca alvo apenas no raio especificado) ---
 function findBestAutoTarget(maxRange) {
     if (!myPlayer) return null;
-
     let bestId = null;
-    let bestDist = maxRange; // Começa com o limite máximo permitido
-
-    // 1. Procura em Monstros
+    let bestDist = maxRange; 
     for (const id in monsters) {
         const m = monsters[id];
         if (m.userData.hp <= 0) continue;
-        
         const dist = myPlayer.position.distanceTo(m.position);
-        if (dist <= bestDist) { // Só pega se estiver DENTRO do raio
+        if (dist <= bestDist) { 
             bestDist = dist;
             bestId = id;
         }
     }
-
-    // 2. Procura em Players (se PVP for true)
     if (currentMapConfig && currentMapConfig.pvp) {
         for (const id in otherPlayers) {
             const p = otherPlayers[id];
@@ -1001,34 +888,23 @@ function findBestAutoTarget(maxRange) {
             }
         }
     }
-
     return bestId;
 }
 
-// --- FUNÇÃO DE TROCA INTELIGENTE (MELEE) ---
 function checkAndSwapMeleeTarget() {
-    // 1. Verifica a distância do alvo ATUAL (se tiver)
     let currentDist = Infinity;
     if (currentTargetId) {
         const t = monsters[currentTargetId] || otherPlayers[currentTargetId];
         if (t) {
             currentDist = myPlayer.position.distanceTo(t.position);
         } else {
-            // Se o ID existe mas o objeto não (bug/desync), reseta
             currentTargetId = null;
         }
     }
-
-    // 2. Se o alvo atual estiver longe (> 2.5m) OU se não tiver alvo...
-    if (currentDist > 2.5 || !currentTargetId) { // distacia do alvo atual
-        // ...Tenta achar alguém NOVO bem perto
-        const newId = findBestAutoTarget(2.0); // distancia para detectar alguém
-        
-        // 3. Se achou alguém perto, TROCA O ALVO
+    if (currentDist > 2.5 || !currentTargetId) { 
+        const newId = findBestAutoTarget(2.0); 
         if (newId) {
             currentTargetId = newId;
-            
-            // Atualiza o anel visual imediatamente
             const newTarget = monsters[newId] || otherPlayers[newId];
             if (targetRing && newTarget) {
                 targetRing.visible = true;
@@ -1038,40 +914,29 @@ function checkAndSwapMeleeTarget() {
     }
 }
 
-// --- SISTEMA DE TARGETING (TAB) ---
 function selectNextTarget() {
     if (!myPlayer) return;
-
     const MAX_TAB_DISTANCE = 20.0; 
     const MAX_CANDIDATES = 5;      
-
     let candidates = [];
-    
-    // 1. Monstros
     for (const id in monsters) {
         const m = monsters[id];
         if (m.userData.hp <= 0) continue;
         const dist = myPlayer.position.distanceTo(m.position);
         if (dist <= MAX_TAB_DISTANCE) candidates.push({ id: id, dist: dist, obj: m });
     }
-
-    // 2. Players (SEMPRE permite selecionar, para poder curar)
-    // A validação se pode ATACAR é feita no servidor ou na hora de apertar F
     for (const id in otherPlayers) {
         const p = otherPlayers[id];
         const dist = myPlayer.position.distanceTo(p.position);
         if (dist <= MAX_TAB_DISTANCE) candidates.push({ id: id, dist: dist, obj: p });
     }
-
     if (candidates.length === 0) {
         currentTargetId = null;
         if(targetRing) targetRing.visible = false;
         return;
     }
-
     candidates.sort((a, b) => a.dist - b.dist);
     candidates = candidates.slice(0, MAX_CANDIDATES);
-
     let nextIndex = 0;
     if (currentTargetId) {
         const currentIndex = candidates.findIndex(c => c.id === currentTargetId);
@@ -1079,71 +944,46 @@ function selectNextTarget() {
             nextIndex = (currentIndex + 1) % candidates.length;
         }
     }
-
     const best = candidates[nextIndex];
     currentTargetId = best.id;
-    
     if(targetRing) {
         targetRing.visible = true;
         targetRing.position.set(best.obj.position.x, 0.05, best.obj.position.z);
     }
 }
 
-// --- VERIFICAR ÂNGULO (Matemática Vetorial) ---
 function isTargetInFront(targetObj) {
     if (!myPlayer || !targetObj) return false;
-
-    // 1. Vetor Direção do Jogador (Onde ele está olhando)
     const playerDir = new THREE.Vector3();
     myPlayer.getWorldDirection(playerDir);
-
-    // 2. Vetor Distância até o Alvo (Normalizado)
     const targetDir = new THREE.Vector3()
         .subVectors(targetObj.position, myPlayer.position)
         .normalize();
-
-    // 3. Produto Escalar (Dot Product)
-    // Se for 1, está exatamente na frente. 
-    // Se for 0, está 90 graus (do lado).
-    // Se for -1, está nas costas.
-    // Queremos algo como > 0.2 (aprox 160 graus de cone)
     const dot = playerDir.dot(targetDir);
-
     return dot > 0.2; 
 }
 
 function performAttack() {
     if(getIsChatActive() || isSitting || !myPlayer) return;
-    cancelAreaTargeting(); // Cancela o targeting de área se estiver ativo
+    cancelAreaTargeting(); 
 
     let weaponId = myEquipment.weapon;
     let weaponConfig = weaponId ? itemDB[weaponId] : null;
     let isRanged = weaponConfig && weaponConfig.weaponType === WEAPON_TYPES.RANGED;;
     let range = isRanged ? (weaponConfig.range || 10) : 2.5;
 
-    // --- NOVA LÓGICA DE PERSEGUIÇÃO ---
-    // Limite Global: Até 15m o jogo segura o alvo para você perseguir.
-    // Se a arma tiver alcance MAIOR que 15m, o limite será o alcance da arma.
     const GLOBAL_CHASE_LIMIT = 15.0; 
     
-    // 1. MELEE (Mantém a lógica de troca rápida para fluidez no soco)
     if (!isRanged) {
         checkAndSwapMeleeTarget();
     } 
-    // 2. RANGED (Lógica Inteligente)
     else {
         let needNewTarget = !currentTargetId;
-
         if (currentTargetId) {
             const t = monsters[currentTargetId] || otherPlayers[currentTargetId];
             if (t) {
                 const dist = myPlayer.position.distanceTo(t.position);
-                
-                // CALCULA O LIMITE DE DESISTÊNCIA
-                // É o maior valor entre: "15m" OU "Range da Arma + 1m"
                 const giveUpDistance = Math.max(GLOBAL_CHASE_LIMIT, range + 1.0);
-
-                // Só descarta se superou esse limite inteligente
                 if (dist > giveUpDistance) {
                     currentTargetId = null; 
                     needNewTarget = true;   
@@ -1152,9 +992,6 @@ function performAttack() {
                 needNewTarget = true;
             }
         }
-
-        // Se precisou trocar, busca novo alvo DENTRO DO ALCANCE DA ARMA
-        // (A busca sempre prioriza quem você pode acertar AGORA)
         if (needNewTarget) {
             const foundId = findBestAutoTarget(range);
             if (foundId) {
@@ -1162,7 +999,6 @@ function performAttack() {
                 const newT = monsters[foundId] || otherPlayers[foundId];
                 if (targetRing && newT) {
                     targetRing.visible = true;
-                    // Usa copy para pular sem lerp
                     targetRing.position.copy(newT.position);
                     lastRenderedTargetId = foundId;
                 }
@@ -1170,19 +1006,16 @@ function performAttack() {
         }
     }
     
-    // 3. Execução
     const targetObj = monsters[currentTargetId] || otherPlayers[currentTargetId];
     
     if (targetObj) {
         const dist = myPlayer.position.distanceTo(targetObj.position);
         
         if (isRanged) {
-            // Se está travado no alvo, mas fora do alcance de ataque
             if (dist > range) {
                 addLogMessage('SISTEMA', 'Alvo fora de alcance! Aproxime-se.', 'system');
                 return; 
             }
-
             if (!isTargetInFront(targetObj)) {
                 addLogMessage('SISTEMA', 'Precisa estar de frente para o alvo!', 'system');
                 return;
@@ -1294,6 +1127,7 @@ function finalizeMapLoad(myData, players, mobs) {
         myPlayer.position.set(myData.position.x, myData.position.y, myData.position.z);
         isSitting = false; isAttacking = false;
         playAnim(myPlayer, 'IDLE');
+        AudioManager.updatePositionRef(myPlayer.position)
     }
     if(currentMapConfig.portals) {
         currentMapConfig.portals.forEach(p => { ParticleManager.createPortal(scene, p.x, p.z); });
@@ -1393,41 +1227,31 @@ function checkCollision(position, direction, distance) {
     return (intersects.length > 0 && intersects[0].distance < distance);
 }
 
-// Função para cancelar o modo de mira (Area Skill)
 function cancelAreaTargeting() {
     if (pendingSkill) {
         pendingSkill = null;
         AreaCursor.setVisible(false);
-        // Opcional: Feedback no chat
-        // addLogMessage('SISTEMA', 'Mira cancelada.', 'system'); 
     }
 }
 
-// Função auxiliar para disparar a skill de área (usada por Mouse e Teclado)
 function executePendingSkill(targetPoint) {
     if (!pendingSkill || !targetPoint) return;
 
-    // 1. Verifica Cooldown Local
     const now = Date.now();
     if (localCooldowns[pendingSkill.id] && now < localCooldowns[pendingSkill.id]) {
         addLogMessage('SISTEMA', 'Habilidade em recarga.', 'system');
         return; 
     }
-
-    // 2. Verifica Mana Local
     if (myStats.mp < pendingSkill.manaCost) {
         addLogMessage('SISTEMA', 'Mana insuficiente.', 'system');
         return; 
     }
-
-    // 3. Valida Distância
     const dist = myPlayer.position.distanceTo(targetPoint);
     if (dist > pendingSkill.range + 2.0) {
         addLogMessage('SISTEMA', 'Área muito distante.', 'system');
         return; 
     }
 
-    // --- EXECUÇÃO ---
     const dx = targetPoint.x - myPlayer.position.x;
     const dz = targetPoint.z - myPlayer.position.z;
     myPlayer.rotation.y = Math.atan2(dx, dz);
@@ -1457,25 +1281,16 @@ function executePendingSkill(targetPoint) {
     AreaCursor.setVisible(false);
 }
 
-// Função auxiliar para lidar com a morte visual com delay
 function performVisualDeath(id) {
     const mob = monsters[id];
     if (!mob) return;
-
-    // Se já agendamos a morte dele, ignora chamadas duplicadas
     if (mob.userData.deathScheduled) return;
     mob.userData.deathScheduled = true;
-
-    // Pega o delay calculado no damage_dealt (ou 0 se for morte instantânea)
     const delay = mob.userData.deathDelay || 0;
-
-    // Remove o anel de target IMEDIATAMENTE (para o jogador não tentar bater num morto)
     if (currentTargetId === id) {
         currentTargetId = null;
         if (targetRing) targetRing.visible = false;
     }
-
-    // Agenda o Fade Out
     setTimeout(() => {
         if (monsters[id]) {
             FadeManager.fadeOutAndRemove(monsters[id], scene, true);
@@ -1503,6 +1318,9 @@ function animate() {
     ProjectileManager.update(delta, scene);
 
     if(myPlayer && !isMapLoading) {
+        // Atualiza posição no AudioManager para sons 3D
+        AudioManager.updatePositionRef(myPlayer.position);
+        
         if(myPlayer.userData.mixer) myPlayer.userData.mixer.update(delta);
         if (frameCount % 10 === 0) updateDebug(currentMapConfig ? currentMapConfig.id : '', myPlayer.position, Object.keys(otherPlayers).length + 1, totalOnline);
         const isChatActive = getIsChatActive();
@@ -1515,43 +1333,36 @@ function animate() {
             }
         }
         if (!isChatActive && keys['f'] && !isAttacking && (now - lastAttackTime > ATTACK_COOLDOWN)) {
-             // Só repete ataque se for melee, ranged não repete automático pra evitar spam sem mira
-             // Mas como simplificação, mantemos o performAttack
              performAttack(); 
              lastAttackTime = now;
         }
 
         let isMoving = false;
-    if(!isChatActive && !isSitting && !isAttacking) { 
+        if(!isChatActive && !isSitting && !isAttacking) { 
             tempVector.set(0, 0, 0);
             if(keys['w']) tempVector.z -= 1; if(keys['s']) tempVector.z += 1;
             if(keys['a']) tempVector.x -= 1; if(keys['d']) tempVector.x += 1;
 
-            // --- LÓGICA NOVA: CONTROLE DE CURSOR DE ÁREA ---
             if (pendingSkill && keys['shift']) {
-                // Se tem input de movimento, move o CURSOR, não o player
                 if(tempVector.lengthSq() > 0) {
                     tempVector.normalize();
-                    const cursorSpeed = 15.0; // Velocidade do cursor
-                    
+                    const cursorSpeed = 15.0; 
                     keyboardCursorPos.x += tempVector.x * cursorSpeed * delta;
                     keyboardCursorPos.z += tempVector.z * cursorSpeed * delta;
-                    
-                    // Atualiza visualmente o anel azul
                     AreaCursor.updatePosition(keyboardCursorPos);
-                    
-                    // Atualiza a animação do player para IDLE (já que ele parou de correr para mirar)
                     if(myPlayer.userData.current !== 'IDLE') playAnim(myPlayer, 'IDLE');
                 }
             } 
-            // --- MOVIMENTO NORMAL DO JOGADOR ---
             else if(tempVector.lengthSq() > 0) {
-                if (castingTimer) { clearTimeout(castingTimer); castingTimer = null; }                
+                if (castingTimer) { 
+                    clearTimeout(castingTimer); castingTimer = null; 
+                    socket.emit('player_update', { position: myPlayer.position, rotation: myPlayer.rotation.y, animation: 'IDLE' }); 
+                    AudioManager.stopLoop('conjure'); // Cancela som se andar
+                }                
                 
                 tempVector.normalize();
                 const isRunning = keys['shift']; 
                 const speed = isRunning ? CONFIG.runSpeed : CONFIG.moveSpeed;
-                // ... (o resto do código de movimento original continua aqui igualzinho)
                 const moveDistance = speed * delta; 
                 const worldDir = tempVector.clone(); 
                 
@@ -1578,10 +1389,7 @@ function animate() {
                 if(myPlayer.userData.current !== 'ATTACK' && myPlayer.userData.current !== 'SIT') playAnim(myPlayer, 'IDLE');
             }
             
-            // IMPORTANTE: Se estiver usando o mouse para mirar (sem shift), atualizamos a posição do cursor lógico
-            // para garantir que se apertar Shift depois, ele continue de onde o mouse estava.
             if (pendingSkill && !keys['shift']) {
-                // Precisamos atualizar o keyboardCursorPos para onde o mouse está apontando
                  raycaster.setFromCamera(mouse, camera); 
                  const intersects = raycaster.intersectObjects(environmentLayer.children, true); 
                  if (intersects.length > 0) {
@@ -1650,17 +1458,12 @@ function animate() {
     if (targetRing) {
         if (activeTarget) {
             targetRing.visible = true;
-            
-            // CORREÇÃO DO GLITCH:
-            // Se trocou de alvo, TELEPORTA o anel (sem deslizar)
             if (currentTargetId !== lastRenderedTargetId) {
                 targetRing.position.copy(activeTarget.position);
                 lastRenderedTargetId = currentTargetId;
             } else {
-                // Se é o mesmo alvo se movendo, desliza suave
                 targetRing.position.lerp(activeTarget.position, 0.2);
             }
-            
             targetRing.position.y = 0.05;
         } else {
             targetRing.visible = false;
@@ -1672,3 +1475,21 @@ function animate() {
 }
 
 window.requestDrop = (index, qtd) => { socket.emit('drop_item_request', { slotIndex: index, qtd: qtd }); };
+
+// ... (final do arquivo game.js) ...
+
+// --- INICIALIZAÇÃO PRÉ-JOGO (Tela de Login) ---
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. Começa a baixar os sons imediatamente (sem esperar login)
+    AudioManager.preload();
+
+    // 2. No primeiro clique em qualquer lugar da tela (ex: campo de usuário), liga o áudio e toca a música
+    document.addEventListener('click', () => {
+        AudioManager.resumeContext();
+        
+        // Só toca a música de login se a tela de login ainda estiver visível
+        if (UI.loginScreen.style.display !== 'none') {
+            AudioManager.playBGM('bgm_login');
+        }
+    }, { once: true }); // 'once: true' garante que isso só rode no primeiro clique
+});

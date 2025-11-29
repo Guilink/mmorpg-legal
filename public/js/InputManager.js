@@ -3,20 +3,22 @@
 export const keys = {};
 let isChatActive = false;
 
+// Esta função precisa ter o 'export' na frente para o game.js encontrá-la
 export function setChatActive(state) {
     isChatActive = state;
 }
 
+// Esta também precisa do 'export' (é aqui que seu erro está ocorrendo)
 export function getIsChatActive() {
     return isChatActive;
 }
 
-// MUDANÇA 1: Adicionei onToggleSkills no final dos argumentos
 export function setupInputs(onEnterPress, onSit, onAttack, onToggleStatus, onToggleInventory, onPickup, onHotkey, onTab, onToggleSkills) { 
     
     document.addEventListener('contextmenu', event => event.preventDefault());
 
     document.addEventListener('keydown', e => {
+        // Bloqueia atalhos de navegador que atrapalham jogos
         if (e.key === 'Alt' || e.key === 'F10' || (e.ctrlKey && e.key === 's')) {
             e.preventDefault();
         }        
@@ -36,13 +38,13 @@ export function setupInputs(onEnterPress, onSit, onAttack, onToggleStatus, onTog
                 return;
             }
 
-            // Hierarquia de Fechamento de Janelas (LIFO - Last In First Out visual)
+            // Hierarquia de Fechamento de Janelas
             const ui = document.getElementById('status-window');
             const inv = document.getElementById('inventory-window');
             const skills = document.getElementById('skills-window');
             const dropModal = document.getElementById('drop-modal');
 
-            // 1. Modal de Drop (Prioridade Máxima)
+            // 1. Modal de Drop
             if (dropModal && dropModal.style.display !== 'none') {
                 if(window.closeDropModal) window.closeDropModal();
                 return;
@@ -66,10 +68,10 @@ export function setupInputs(onEnterPress, onSit, onAttack, onToggleStatus, onTog
                 return;
             }
 
-            // 5. Se nada estiver aberto, executa ação padrão (ex: menu do sistema, ou nada)
             return;
         }
-        // Atalhos Numéricos
+        
+        // Atalhos Numéricos (Hotbar)
         if (['1', '2', '3', '4', '5', '6'].includes(e.key)) {
             if (onHotkey) onHotkey(parseInt(e.key));
             return;
@@ -85,9 +87,7 @@ export function setupInputs(onEnterPress, onSit, onAttack, onToggleStatus, onTog
         // Atalhos de UI
         if (e.altKey && e.key.toLowerCase() === 'a') { e.preventDefault(); if (onToggleStatus) onToggleStatus(); return; }
         if (e.altKey && e.key.toLowerCase() === 'e') { e.preventDefault(); if (onToggleInventory) onToggleInventory(); return; }
-
-        // MUDANÇA 2: Tecla S para Skills (Só se não estiver no chat)
-        if (e.altKey && e.key.toLowerCase() === 'h') {e.preventDefault(); if (onToggleSkills) onToggleSkills(); return; }
+        if (e.altKey && e.key.toLowerCase() === 'h') { e.preventDefault(); if (onToggleSkills) onToggleSkills(); return; }
         
         keys[e.key.toLowerCase()] = true;
     });
