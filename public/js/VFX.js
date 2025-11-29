@@ -16,19 +16,28 @@ export const FadeManager = {
         fadingMeshes.push(mesh);
     },
 
-    fadeOutAndRemove: (mesh, scene) => { // Nota: Recebe a scene agora para remover
+// Adicionei o parâmetro 'sink' (afundar) que padroniza como falso
+    fadeOutAndRemove: (mesh, scene, sink = false) => { 
         if (!mesh) return;
+        
+        // Desativa sombras para não ficar estranho enquanto afunda
         mesh.castShadow = false;
+        
         mesh.traverse(c => {
             if (c.isMesh && c.material) {
                 c.material.transparent = true;
                 c.material.depthWrite = true;
             }
         });
+
         mesh.userData.fadeTarget = 0.0;
-        mesh.userData.fadeSpeed = 2.0;
+        mesh.userData.fadeSpeed = 2.5;
         mesh.userData.removeOnComplete = true;
-        mesh.userData.sceneRef = scene; // Guarda referencia da cena
+        mesh.userData.sceneRef = scene;
+        
+        // Configuração do efeito de afundar
+        mesh.userData.isSinking = sink;
+        mesh.userData.sinkSpeed = 0.5; // Velocidade da descida
         
         if (!fadingMeshes.includes(mesh)) fadingMeshes.push(mesh);
     },
@@ -37,6 +46,13 @@ export const FadeManager = {
         for (let i = fadingMeshes.length - 1; i >= 0; i--) {
             const mesh = fadingMeshes[i];
             let complete = false;
+
+            // --- LÓGICA DE AFUNDAR (NOVO) ---
+            if (mesh.userData.isSinking) {
+                // Desce o monstro suavemente pelo eixo Y
+                mesh.position.y -= mesh.userData.sinkSpeed * delta;
+            }
+            // --------------------------------
 
             mesh.traverse(c => {
                 if (c.isMesh && c.material) {
@@ -224,7 +240,7 @@ export const GroundItemManager = {
         const createSprite = (tex) => {
             const material = new THREE.SpriteMaterial({ map: tex, transparent: true });
             const sprite = new THREE.Sprite(material);
-            sprite.scale.set(0.4, 0.4, 1); 
+            sprite.scale.set(0.6, 0.6, 1); 
             sprite.position.set(data.x, 1.2, data.z); 
             
             sprite.userData = { 
@@ -279,7 +295,7 @@ export const GroundItemManager = {
 
     update: (delta, scene) => {
         const GRAVITY = 8.0;
-        const FLOOR_Y = 0.1;
+        const FLOOR_Y = 0.3;
 
         Object.keys(GroundItemManager.items).forEach(key => {
             const sprite = GroundItemManager.items[key];
@@ -649,28 +665,41 @@ let areaCursorMesh = null;
 
 export const AreaCursor = {
     create: (scene) => {
-        // Carrega a imagem do círculo mágico
         const texture = new THREE.TextureLoader().load('assets/magic_circle.png');
         
-        // PlaneGeometry (1, 1) é um quadrado base. A escala será controlada pelo raio da skill.
         const geometry = new THREE.PlaneGeometry(1, 1); 
         
         const material = new THREE.MeshBasicMaterial({ 
-            map: texture,       // Usa sua imagem
-            transparent: true,  // Permite transparência do PNG
-            opacity: 0.8,       // Leve transparência geral
+            map: texture,
+            transparent: true, 
+            
+            // 1. AJUSTE DE TRANSLUCIDEZ
+            opacity: 0.6, // Baixei de 0.8 para 0.6 (Fica mais elegante/suave)
+            
             side: THREE.DoubleSide,
-            depthTest: false,   // Desenha sempre por cima do chão
-            depthWrite: false
+            
+            // 2. CORREÇÃO DE PROFUNDIDADE (O Segredo)
+            depthWrite: false, // Não bloqueia objetos transparentes atrás dele
+            depthTest: true,   // <--- MUDANÇA CRÍTICA: Agora ele verifica se tem parede na frente!
+            
+            // 3. EVITAR "PISCAR" NO CHÃO (Z-Fighting)
+            // Como ligamos o depthTest, ele pode brigar com o chão. 
+            // Essas duas linhas dizem pra GPU: "Desenha isso um milímetro acima do chão visualmente"
+            polygonOffset: true,
+            polygonOffsetFactor: -4, 
+            polygonOffsetUnits: -4
         });
         
         areaCursorMesh = new THREE.Mesh(geometry, material);
-        areaCursorMesh.rotation.x = -Math.PI / 2; // Deitado no chão
-        areaCursorMesh.position.set(0, 0.1, 0);   
+        areaCursorMesh.rotation.x = -Math.PI / 2; 
+        
+        // Mantemos levemente elevado fisicamente só por segurança
+        areaCursorMesh.position.set(0, 0.05, 0);   
         areaCursorMesh.visible = false;
         
-        // RenderOrder alto para aparecer sobre o terreno
-        areaCursorMesh.renderOrder = 999; 
+        // 4. REMOVEMOS O RENDER ORDER ALTO
+        // areaCursorMesh.renderOrder = 999; <--- APAGUE OU COMENTE ESSA LINHA
+        // Deixando o padrão (0), ele vai respeitar a ordem natural de profundidade
         
         scene.add(areaCursorMesh);
         return areaCursorMesh;

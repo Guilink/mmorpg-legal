@@ -283,7 +283,8 @@ function savePlayerState(socket) {
     accounts[socket.username].data = {
         map: socket.map, position: socket.position, stats: socket.stats,
         level: socket.level, xp: socket.xp, points: socket.pointsToDistribute, 
-        attributes: socket.attributes, inventory: socket.inventory, equipment: socket.equipment
+        attributes: socket.attributes, inventory: socket.inventory, equipment: socket.equipment, 
+        hotbar: socket.hotbar
     };
     saveAccounts();
 }
@@ -401,12 +402,16 @@ io.on('connection', (socket) => {
             socket.pointsToDistribute = savedData.points || 0;
             socket.attributes = savedData.attributes || { ...BASE_ATTRIBUTES };
             socket.inventory = savedData.inventory || [];
-            socket.equipment = savedData.equipment || { weapon: null, armor: null, head: null, legs: null, accessory: null };            
+            socket.equipment = savedData.equipment || { weapon: null, armor: null, head: null, legs: null, accessory: null };     
+            socket.hotbar = savedData.hotbar || [null, null, null, null, null, null];       
             socket.nextLevelXp = LEVEL_TABLE[socket.level] || 100;
             socket.stats = { ...savedData.stats };
             socket.cooldowns = {}; // Armazena timestamp de quando a skill estará pronta
+            socket.itemCooldowns = {};
             socket.isCasting = false;
             socket.castTimeout = null;
+
+            
 
             recalculateStats(socket);
             
@@ -431,7 +436,7 @@ io.on('connection', (socket) => {
                 playerId: socket.id, playerData: myData, mapConfig: MAP_CONFIG[socket.map],
                 mapPlayers: mapPlayers, mapMonsters: mapMonsters, mapGroundItems: mapGroundItems,
                 monsterTypes: MONSTER_TYPES, itemDB: ITEM_DATABASE, skillDB: SKILL_DATABASE,
-                inventory: socket.inventory, equipment: socket.equipment,
+                inventory: socket.inventory, equipment: socket.equipment, hotbar: socket.hotbar,
                 // Enviando constantes para o cliente evitar erros de digitação:
                 weaponTypes: WEAPON_TYPES, itemTypes: ITEM_TYPES 
             });
@@ -569,7 +574,14 @@ io.on('connection', (socket) => {
 
             // 2. Envia visuais
             io.to(attacker.map).emit('damage_dealt', {
-                targetId: realTargetId, attackerId: attacker.id, damage: dmg, newHp: currentHp, isMonster: isMonsterTarget, x: target.position.x, z: target.position.z
+                targetId: realTargetId, 
+                attackerId: attacker.id, 
+                damage: dmg, 
+                newHp: currentHp, 
+                isMonster: isMonsterTarget, 
+                x: target.position.x, 
+                z: target.position.z,
+                dmgType: 'BASIC' // <--- NOVO
             });
 
             if (isRanged) {
@@ -595,6 +607,20 @@ io.on('connection', (socket) => {
         const item = socket.inventory[slotIndex];
         const dbItem = ITEM_DATABASE[item.id];
         if (!dbItem) return;
+
+        // --- VALIDAÇÃO DE COOLDOWN DE ITEM ---
+        if (dbItem.cooldown) {
+            const now = Date.now();
+        if (!socket.itemCooldowns) socket.itemCooldowns = {}; 
+        const lastUse = socket.itemCooldowns[dbItem.id] || 0;
+            if (now < lastUse) {
+                socket.emit('chat_message', { username: 'SISTEMA', message: 'Item em espera.', type: 'system' });
+                return;
+            }
+            // Atualiza o tempo de uso
+            socket.itemCooldowns[dbItem.id] = now + dbItem.cooldown;
+        }
+        // -------------------------------------        
 
         if (dbItem.type === ITEM_TYPES.EQUIPMENT) {
             const slot = dbItem.slot;
@@ -720,9 +746,19 @@ io.on('connection', (socket) => {
     });
 
 // --- SISTEMA DE SKILLS ---
-socket.on('use_skill', (data) => {
+    socket.on('use_skill', (data) => {
         const player = onlinePlayers[socket.id];
         if (!player || player.stats.hp <= 0) return;
+        // Se o jogador já está castando algo e tenta usar outra skill (ou a mesma),
+        // Interrompe o cast atual imediatamente.
+        if (player.isCasting) {
+            clearTimeout(player.castTimeout);
+            player.isCasting = false;
+            // Avisa o cliente que o cast anterior foi cancelado (para limpar barra de cast se houver)
+            io.to(player.map).emit('cast_interrupted', player.id);
+            // Opcional: Retornar aqui se quiser impedir "spam", mas permitir 
+            // que a nova skill substitua a velha (mecânica de cancelamento) é mais fluido.
+        }        
 
         const skill = SKILL_DATABASE[data.skillId];
         if (!skill) return;
@@ -840,10 +876,11 @@ socket.on('use_skill', (data) => {
                      finalHp = target.stats.hp;
                  }
 
-                 io.to(player.map).emit('damage_dealt', {
-                    targetId: realTargetId, attackerId: player.id, damage: dmg, newHp: finalHp, isMonster: isMonster,
-                    x: parseFloat(target.position.x), z: parseFloat(target.position.z)
-                 });
+                io.to(player.map).emit('damage_dealt', {
+                targetId: realTargetId, attackerId: player.id, damage: dmg, newHp: finalHp, isMonster: isMonster,
+                x: parseFloat(target.position.x), z: parseFloat(target.position.z),
+                dmgType: 'PROJECTILE' // <--- NOVO (Calcularemos pela distância)
+                });
                  
                  let projType = skill.projectileType || 'ARROW'; 
                  io.to(player.map).emit('projectile_fired', {
@@ -879,7 +916,8 @@ socket.on('use_skill', (data) => {
 
                 io.to(player.map).emit('damage_dealt', {
                     targetId: target.id, attackerId: player.id, damage: Math.floor(physDmg), newHp: finalHp, isMonster: isMonster,
-                    x: parseFloat(target.position.x), z: parseFloat(target.position.z)
+                    x: parseFloat(target.position.x), z: parseFloat(target.position.z),
+                    dmgType: 'MELEE' // <--- NOVO (Delay fixo de animação)
                 });
 
                 if (finalHp <= 0) {
@@ -942,7 +980,9 @@ socket.on('use_skill', (data) => {
                     if (distSq <= radiusSq) {
                         let finalHp = m.takeDamage(magicDmg, player.id);
                         io.to(player.map).emit('damage_dealt', {
-                            targetId: m.id, attackerId: player.id, damage: magicDmg, newHp: finalHp, isMonster: true, x: m.position.x, z: m.position.z
+                            targetId: m.id, attackerId: player.id, damage: magicDmg, newHp: finalHp, isMonster: true, 
+                            x: m.position.x, z: m.position.z,
+                            dmgType: 'AREA' // <--- NOVO (Delay da queda)
                         });
                         if (finalHp <= 0) handleMonsterDeath(player, m);
                     }
@@ -959,7 +999,9 @@ socket.on('use_skill', (data) => {
                             p.stats.hp = Math.max(0, p.stats.hp - finalDmg);
                             
                             io.to(player.map).emit('damage_dealt', {
-                                targetId: p.id, attackerId: player.id, damage: Math.floor(finalDmg), newHp: p.stats.hp, isMonster: false, x: p.position.x, z: p.position.z
+                                targetId: p.id, attackerId: player.id, damage: Math.floor(finalDmg), newHp: p.stats.hp, isMonster: false, 
+                                x: p.position.x, z: p.position.z,
+                                dmgType: 'AREA' // <--- NOVO
                             });
 
                             if (p.stats.hp <= 0) handlePlayerDeath(p);
@@ -983,6 +1025,19 @@ socket.on('use_skill', (data) => {
             executeSkill();
         }
     });
+
+    socket.on('update_hotbar', (newState) => {
+        if (Array.isArray(newState) && newState.length === 6) {
+            socket.hotbar = newState;
+            // Opcional: Salvar imediatamente se quiser segurança total contra crash
+            // savePlayerState(socket); 
+        }
+    });   
+    
+    // Sistema de Ping
+    socket.on('ping_check', (startTime) => {
+        socket.emit('pong_check', startTime);
+    });    
 
     socket.on('disconnect', () => {
         if (onlinePlayers[socket.id]) {

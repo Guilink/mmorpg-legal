@@ -1,5 +1,46 @@
 * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
-body { overflow: hidden; background: #000; }
+
+/* REGRA GLOBAL DE BLOQUEIO (Seleção e Drag) */
+* {
+    -webkit-user-select: none; /* Chrome/Safari */
+    -moz-user-select: none;    /* Firefox */
+    -ms-user-select: none;     /* Edge/IE */
+    user-select: none;         /* Padrão */
+    
+    /* Impede arrastar (complemento ao JS) */
+    -webkit-user-drag: none;
+}
+
+/* 1. REGRA MESTRA: TUDO É SETA POR PADRÃO */
+/* Note que removi 'input' e 'textarea' desta lista para evitar conflito */
+body, html, button, .link-btn, .close-btn, .hotkey-slot {
+    cursor: url('assets/cursors/cursor_default.png'), auto !important;
+}
+
+/* 2. EXCEÇÃO: CAMPOS DE DIGITAÇÃO */
+/* Ao colocar depois da regra mestra, garantimos que o cursor de texto funcione */
+input, textarea {
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -ms-user-select: text !important;
+    user-select: text !important;
+    cursor: text !important; /* Cursor "I" do sistema */
+}
+
+/* 3. EXCEÇÕES: ONDE DEVE SER A MÃOZINHA DE PEGAR/ARRASTAR */
+.item-slot, .skill-icon, .win-header {
+    cursor: url('assets/cursors/cursor_pick.png'), pointer !important;
+}
+
+/* 4. CORREÇÃO DE BLOQUEIO DE MOUSE (CRUCIAL PARA O 3D FUNCIONAR) */
+#hud, #chat-container, #damage-container, #hotbar-container, #debug-panel {
+    pointer-events: none; 
+}
+
+/* Reativa o mouse apenas nos elementos interativos dentro dessas divs */
+#chat-input, .hotkey-slot, .hud-buttons div {
+    pointer-events: auto;
+}
 
 /* TELA DE LOGIN */
 #login-screen {
@@ -142,7 +183,7 @@ body { overflow: hidden; background: #000; }
     cursor: pointer; position: relative; display: flex; justify-content: center; align-items: center;
 }
 .item-slot:hover { border-color: #fff; background: #333; }
-.item-slot img { width: 32px; height: 32px; image-rendering: pixelated; }
+.item-slot img { width: 32px; height: 32px; image-rendering: auto; }
 
 .bag-grid {
     display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; padding: 10px;
@@ -253,7 +294,7 @@ body { overflow: hidden; background: #000; }
 
 /* IMPEDE ARRASTAR NATIVO E SELEÇÃO */
 .item-slot img { 
-    width: 32px; height: 32px; image-rendering: pixelated; 
+    width: 32px; height: 32px; image-rendering: auto; 
     pointer-events: none; /* O clique passa pela imagem e vai pro slot div */
     user-select: none;    /* Impede selecionar como texto */
     -webkit-user-drag: none; /* Impede o navegador de arrastar a imagem */
@@ -274,7 +315,7 @@ body { overflow: hidden; background: #000; }
     align-items: center;
 }
 .drag-ghost img {
-    width: 32px; height: 32px; image-rendering: pixelated;
+    width: 32px; height: 32px; image-rendering: auto;
 }
 
 /* CURSORES PARA O INVENTÁRIO */
@@ -328,7 +369,7 @@ body { overflow: hidden; background: #000; }
 
 .hotkey-content img {
     width: 34px; height: 34px;
-    image-rendering: pixelated;
+    image-rendering: auto;
     pointer-events: none;
 }
 
@@ -459,3 +500,4 @@ body { overflow: hidden; background: #000; }
     display: flex;
     align-items: center; /* Alinha texto base e bonus verticalmente */
 }
+

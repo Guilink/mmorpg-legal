@@ -64,6 +64,8 @@ let equipmentBonuses = { atk: 0, def: 0, matk: 0, eva: 0 };
 let attrBonuses = { str: 0, agi: 0, int: 0, vit: 0 };
 let currentInventoryRef = [];
 let hotbarState = [null, null, null, null, null, null];
+let onHotbarChange = null; // Callback para avisar o servidor
+
 
 let dragData = {
     index: -1, 
@@ -294,6 +296,9 @@ UI.updateInventory = function(inventory, equipment, itemDB, skillDB) {
         Object.values(skillDB).forEach(skill => {
             const div = document.createElement('div');
             div.className = 'skill-item';
+
+            div.onmouseenter = (e) => { if(!dragData.isDragging) showTooltip(e, skill, 'SKILL'); };
+            div.onmouseleave = hideTooltip;            
             
             // Usa o ícone do config ou um default se falhar
             const iconSrc = skill.icon || 'default.png';
@@ -336,13 +341,18 @@ document.addEventListener('mouseup', (e) => {
         const slot = e.target.closest('.hotkey-slot');
         if (slot) {
             const key = parseInt(slot.dataset.key) - 1;
-            hotbarState[key] = null; // Limpa estado
-            renderHotbarStateOnly(); // Redesenha
+            hotbarState[key] = null; // Limpa o estado local
+            
+            // Renderiza visualmente (passando o inventário para manter quantidades dos outros slots)
+            renderHotbarStateOnly(currentInventoryRef); 
+            
+            // PERSISTÊNCIA: Avisa o servidor que mudou
+            if(onHotbarChange) onHotbarChange(hotbarState); 
         }
         return;
     }
 
-    // 2. Soltou o Drag (Botão Esquerdo)
+    // 2. Soltou o Drag (Botão Esquerdo com arraste)
     if (dragData.isDragging) {
         stopItemDrag(); 
         
@@ -351,30 +361,38 @@ document.addEventListener('mouseup', (e) => {
         if (hotbarSlot) {
             const key = parseInt(hotbarSlot.dataset.key) - 1;
             
-            // Salva no estado baseado no tipo
+            // Salva no estado baseado no tipo (ITEM ou SKILL)
             if (dragData.type === 'ITEM') {
                 hotbarState[key] = { type: 'ITEM', id: dragData.item.id };
             } else if (dragData.type === 'SKILL') {
                 hotbarState[key] = { type: 'SKILL', id: dragData.item.id };
             }
-            // CORREÇÃO: Passa o inventário salvo para desenhar a quantidade imediatamente
+            
+            // Renderiza e mostra quantidade imediatamente
             renderHotbarStateOnly(currentInventoryRef); 
+            
+            // PERSISTÊNCIA: Avisa o servidor que mudou
+            if(onHotbarChange) onHotbarChange(hotbarState);
         }
         else if (dragData.type === 'ITEM') {
             // Se soltou fora (chão) e for ITEM
             const rect = UI.inventoryWindow.getBoundingClientRect();
             const isInside = (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom);
+            
+            // Só abre modal se estiver fora da janela E a janela estiver visível
             if (!isInside && UI.inventoryWindow.style.display !== 'none') {
                 openDropModal(dragData.index, dragData.item);
             }
         }
     } else {
-        // Clique simples (sem arrastar)
+        // 3. Clique simples (sem arrastar)
+        
+        // Usar item direto do inventário
         if (dragData.type === 'ITEM' && dragData.index !== -1 && window.useItem) {
              window.useItem(dragData.index);
         }
         
-        // Clique na Hotbar para usar
+        // Clique na Hotbar para usar o atalho
         const hotbarSlot = e.target.closest('.hotkey-slot');
         if (hotbarSlot) {
             const key = parseInt(hotbarSlot.dataset.key) - 1;
@@ -382,9 +400,12 @@ document.addEventListener('mouseup', (e) => {
         }
     }
     
-    // Limpeza
+    // Limpeza Geral
     document.removeEventListener('mousemove', onDragMove);
-    dragData.index = -1; dragData.item = null; dragData.isDragging = false; dragData.type = null;
+    dragData.index = -1; 
+    dragData.item = null; 
+    dragData.isDragging = false; 
+    dragData.type = null;
 });
 
 function onDragMove(e) {
@@ -479,30 +500,90 @@ function renderHotbarStateOnly(inventory) {
 export function getHotkeyItem(slotIndex) { return hotbarState[slotIndex]; }
 
 // ... (Tooltip, Modal e Draggable code mantidos iguais) ...
-function showTooltip(e, item) {
+// Função genérica para Tooltip (Item ou Skill)
+function showTooltip(e, data, type = 'ITEM') {
     const tt = UI.tooltip;
-    let statsHtml = '';
-    if(item.stats) {
-        if(item.stats.atk) statsHtml += `<span class="stat">ATK: +${item.stats.atk}</span>`;
-        if(item.stats.def) statsHtml += `<span class="stat">DEF: +${item.stats.def}</span>`;
-        if(item.stats.str) statsHtml += `<span class="stat">FOR: +${item.stats.str}</span>`;
-        if(item.stats.agi) statsHtml += `<span class="stat">AGI: +${item.stats.agi}</span>`;
-        if(item.stats.int) statsHtml += `<span class="stat">INT: +${item.stats.int}</span>`;
-        if(item.stats.vit) statsHtml += `<span class="stat">VIT: +${item.stats.vit}</span>`;
-        if(item.stats.hp)  statsHtml += `<span class="stat">MaxHP: +${item.stats.hp}</span>`;
+    let htmlContent = '';
+
+    // --- SE FOR ITEM ---
+    if (type === 'ITEM') {
+        const item = data;
+        let statsHtml = '';
+        
+ // Stats básicos
+        if(item.stats) {
+            if(item.stats.atk) statsHtml += `<span class="stat">ATQ: +${item.stats.atk}</span>`;
+            if(item.stats.matk) statsHtml += `<span class="stat">M.ATQ: +${item.stats.matk}</span>`;
+            if(item.stats.def) statsHtml += `<span class="stat">DEF: +${item.stats.def}</span>`;
+            if(item.stats.str) statsHtml += `<span class="stat">FOR: +${item.stats.str}</span>`;
+            if(item.stats.agi) statsHtml += `<span class="stat">AGI: +${item.stats.agi}</span>`;
+            if(item.stats.int) statsHtml += `<span class="stat">INT: +${item.stats.int}</span>`;
+            if(item.stats.vit) statsHtml += `<span class="stat">VIT: +${item.stats.vit}</span>`;
+            if(item.stats.hp)  statsHtml += `<span class="stat">MaxHP: +${item.stats.hp}</span>`;
+        }
+        // Efeitos
+        if(item.effect) {
+             if(item.effect.hp) statsHtml += `<span class="stat" style="color:#f55">Recupera: ${item.effect.hp} HP</span>`;
+             if(item.effect.mp) statsHtml += `<span class="stat" style="color:#55f">Recupera: ${item.effect.mp} MP</span>`;
+        }
+
+        // NOVO: Alcance da Arma
+        if (item.range) {
+            statsHtml += `<span class="stat" style="color:#aaa">Alcance: ${item.range}m</span>`;
+        }
+
+        const titleColor = item.type === 'equipment' ? '#ffd700' : '#fff';
+        htmlContent = `<h3 style="color:${titleColor}">${item.name}</h3><div class="desc">${item.description}</div><hr style="border-color:#444; margin:5px 0;">${statsHtml}`;
+    } 
+
+    // --- SE FOR SKILL (REFORMULADO) ---
+    else if (type === 'SKILL') {
+        const skill = data;
+        let detailsHtml = '';
+
+        // 1. Definição da Cor do Título
+        let titleColor = '#fff';
+        if (skill.type === 'MELEE') titleColor = '#ffff00';      // Amarelo
+        else if (skill.type === 'CASTING' || skill.type === 'INSTANT') titleColor = '#00ffff'; // Azul Claro
+        else if (skill.type === 'SUPPORT') titleColor = '#00ff00'; // Verde
+        else if (skill.type === 'AREA') titleColor = '#ff0000';    // Vermelho
+
+        // 2. Stats na Ordem Solicitada
+        // Poder (Vermelho Claro)
+        if (skill.damage) detailsHtml += `<span class="stat" style="color:#ff8888">Poder: ${skill.damage}</span>`;
+        if (skill.effect && skill.effect.hp) detailsHtml += `<span class="stat" style="color:#ff8888">Poder de Cura: ${skill.effect.hp}</span>`;
+
+        // Alcance (Verde Claro)
+        if (skill.range) detailsHtml += `<span class="stat" style="color:#88ff88">Alcance: ${skill.range}m</span>`;
+
+        // Área de Dano (Verde Claro)
+        if (skill.radius) detailsHtml += `<span class="stat" style="color:#88ff88">Área: ${skill.radius}m</span>`;
+
+        // Tempo de Conjuração (Laranja)
+        if (skill.castTime > 0) detailsHtml += `<span class="stat" style="color:#ffa500">Conjuração: ${(skill.castTime/1000).toFixed(1)}s</span>`;
+        else detailsHtml += `<span class="stat" style="color:#ffa500">Instantâneo</span>`;
+
+        // Custo de Mana (Amarelo e Negrito)
+        detailsHtml += `<span class="stat" style="color:#ffff00; font-weight:bold;">Custo de Mana: ${skill.manaCost}</span>`;
+
+        // Montagem Final (Nome colorido -> Descrição -> Linha -> Detalhes)
+        htmlContent = `<h3 style="color:${titleColor}">${skill.name}</h3>
+                       <div class="desc" style="color:#ccc; font-style:italic;">${skill.description || ''}</div>
+                       <hr style="border-color:#444; margin:5px 0;">
+                       ${detailsHtml}`;
     }
-    if(item.effect) {
-         if(item.effect.hp) statsHtml += `<span class="stat" style="color:#f55">Recupera: ${item.effect.hp} HP</span>`;
-         if(item.effect.mp) statsHtml += `<span class="stat" style="color:#55f">Recupera: ${item.effect.mp} MP</span>`;
-    }
-    tt.innerHTML = `<h3 style="color:${item.type === 'equipment' ? '#ffd700' : '#fff'}">${item.name}</h3><div class="desc">${item.description}</div><hr style="border-color:#444; margin:5px 0;">${statsHtml}`;
+
+    tt.innerHTML = htmlContent;
     tt.style.display = 'block';
+    
+    // Posicionamento inteligente (para não sair da tela)
     const width = tt.offsetWidth; const height = tt.offsetHeight;
     let finalX = e.clientX + 15; let finalY = e.clientY + 15;
     if (finalX + width > window.innerWidth) finalX = e.clientX - width - 10;
     if (finalY + height > window.innerHeight) finalY = e.clientY - height - 10;
     tt.style.left = finalX + 'px'; tt.style.top = finalY + 'px';
 }
+
 function hideTooltip() { UI.tooltip.style.display = 'none'; }
 let pendingDropIndex = -1;
 function openDropModal(index, item) {
@@ -545,27 +626,35 @@ function makeDraggable(elementId) {
 }
 
 // --- COOLDOWN VISUAL OTIMIZADO ---
-export function startCooldownUI(skillId, duration) {
+export function startCooldownUI(id, duration, type = 'SKILL') {
     const slots = document.querySelectorAll('.hotkey-slot');
     
-    // Varre os slots para ver onde essa skill está equipada
     for (let i = 0; i < 6; i++) {
         const data = hotbarState[i];
-        if (data && data.type === 'SKILL' && data.id === skillId) {
+        // Verifica ID e TIPO
+        if (data && data.type === type && data.id === id) {
             const overlay = slots[i].querySelector('.cd-overlay');
             if (overlay) {
-                // 1. Enche a barra imediatamente (sem transição)
                 overlay.style.transition = 'none';
                 overlay.style.height = '100%';
-                
-                // Força o navegador a desenhar (Reflow)
-                void overlay.offsetWidth; 
-
-                // 2. Desce suavemente baseado no tempo da skill
+                void overlay.offsetWidth; // Force Reflow
                 overlay.style.transition = `height ${duration}ms linear`;
                 overlay.style.height = '0%';
             }
         }
+    }
+}
+
+// Define a função que será chamada quando a hotbar mudar
+export function setHotbarChangeCallback(fn) {
+    onHotbarChange = fn;
+}
+
+// Carrega a hotbar salva ao logar
+export function loadHotbarState(savedState) {
+    if (savedState && Array.isArray(savedState)) {
+        hotbarState = savedState;
+        renderHotbarStateOnly(currentInventoryRef);
     }
 }
 

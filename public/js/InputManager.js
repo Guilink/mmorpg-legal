@@ -17,6 +17,9 @@ export function setupInputs(onEnterPress, onSit, onAttack, onToggleStatus, onTog
     document.addEventListener('contextmenu', event => event.preventDefault());
 
     document.addEventListener('keydown', e => {
+        if (e.key === 'Alt' || e.key === 'F10' || (e.ctrlKey && e.key === 's')) {
+            e.preventDefault();
+        }        
         if (e.repeat) return; 
 
         if (isChatActive) {
@@ -24,6 +27,48 @@ export function setupInputs(onEnterPress, onSit, onAttack, onToggleStatus, onTog
             return;
         }
 
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            
+            // Se o chat estiver focado, tira o foco
+            if (document.activeElement === document.getElementById('chat-input')) {
+                document.getElementById('chat-input').blur();
+                return;
+            }
+
+            // Hierarquia de Fechamento de Janelas (LIFO - Last In First Out visual)
+            const ui = document.getElementById('status-window');
+            const inv = document.getElementById('inventory-window');
+            const skills = document.getElementById('skills-window');
+            const dropModal = document.getElementById('drop-modal');
+
+            // 1. Modal de Drop (Prioridade Máxima)
+            if (dropModal && dropModal.style.display !== 'none') {
+                if(window.closeDropModal) window.closeDropModal();
+                return;
+            }
+
+            // 2. Janela de Skills
+            if (skills && skills.style.display !== 'none') {
+                if(onToggleSkills) onToggleSkills();
+                return;
+            }
+
+            // 3. Inventário
+            if (inv && inv.style.display !== 'none') {
+                if(onToggleInventory) onToggleInventory();
+                return;
+            }
+
+            // 4. Status
+            if (ui && ui.style.display !== 'none') {
+                if(onToggleStatus) onToggleStatus();
+                return;
+            }
+
+            // 5. Se nada estiver aberto, executa ação padrão (ex: menu do sistema, ou nada)
+            return;
+        }
         // Atalhos Numéricos
         if (['1', '2', '3', '4', '5', '6'].includes(e.key)) {
             if (onHotkey) onHotkey(parseInt(e.key));

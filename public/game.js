@@ -5,7 +5,8 @@ import {
     UI, toggleForms, showAuthError, showGameInterface, updateHUD, updateDebug, 
     addLogMessage, toggleChatFocus, toggleStatusWindow, setupStatusWindowData,
     refreshStatusWindow, changeAttr, getTempAttributes, updateLoadingBar,
-    renderHotbar, getHotkeyItem, toggleInventory, toggleSkills, startCooldownUI 
+    renderHotbar, getHotkeyItem, toggleInventory, toggleSkills, startCooldownUI,
+    setHotbarChangeCallback, loadHotbarState
 } from './js/UIManager.js';
 import { keys, setupInputs, getIsChatActive, setChatActive } from './js/InputManager.js';
 import { 
@@ -15,6 +16,11 @@ import {
 
 // --- INICIALIZAÇÃO DO SOCKET ---
 const socket = io();
+
+// Configura o UIManager para enviar atualizações para o servidor
+    setHotbarChangeCallback((newState) => {
+        socket.emit('update_hotbar', newState);
+    });
 
 // --- VARIÁVEIS GLOBAIS ---
 let scene, camera, renderer, clock;
@@ -36,6 +42,7 @@ let myEquipment = {}; // Armazena o equipamento atual para sabermos a arma
 let lastRenderedTargetId = null;
 let pendingSkill = null; 
 let localCooldowns = {}; // Armazena quando o cooldown de cada skill VAI ACABAR (Timestamp)
+let localItemCooldowns = {};
 let castingTimer = null; // Armazena o timer do client para cancelar se andar
 let WEAPON_TYPES = {}; // Constantes vindas do servidor
 let ITEM_TYPES = {};
@@ -77,6 +84,19 @@ let myAttributes = { str: 5, agi: 5, int: 5, vit: 5 };
 
 let skillDB = {};
 let keyboardCursorPos = new THREE.Vector3();
+
+// BLOQUEIO GLOBAL DE ARRASTAR (Cirúrgico)
+// Impede que qualquer imagem ou texto vire um "fantasma" ao ser arrastado
+window.addEventListener('dragstart', (e) => e.preventDefault());
+
+// BLOQUEIO TOTAL DE SELEÇÃO (Anti-Azulzinho)
+// Impede que textos e imagens fiquem azuis ao arrastar o mouse
+window.addEventListener('selectstart', (e) => {
+    // Se NÃO for um campo de digitar (Input), proíbe a seleção
+    if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+    }
+});
 
 // --- JANELAS UI ---
 window.toggleForms = toggleForms;
@@ -198,18 +218,26 @@ if (targetPoint) {
 });
 
 window.addEventListener('mousemove', (e) => {
-    if (!pendingSkill || keys['shift']) return; // SE o Shift estiver apertado, o mouse NÃO controla o cursor
-
+    // 1. Atualiza vetor do mouse
     mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-    raycaster.setFromCamera(mouse, camera);
 
-    // Intersecta com o ambiente (chão)
-    const intersects = raycaster.intersectObjects(environmentLayer.children, true);
-    
-    if (intersects.length > 0) {
-        AreaCursor.updatePosition(intersects[0].point);
+    // 2. Lógica de Mira (Skill de Área)
+    if (pendingSkill && !keys['shift']) {
+        raycaster.setFromCamera(mouse, camera); 
+        const intersects = raycaster.intersectObjects(environmentLayer.children, true); 
+        if (intersects.length > 0) {
+            // Atualiza a posição lógica
+            keyboardCursorPos.copy(intersects[0].point);
+            
+            // --- CORREÇÃO: ATUALIZA O VISUAL DO CÍRCULO ---
+            AreaCursor.updatePosition(keyboardCursorPos);
+            // ----------------------------------------------
+        }
     }
+
+    // 3. Limpeza de cursor (Deixa o CSS decidir)
+    document.body.style.cursor = ""; 
 });
 
 function playBGM(file) {
@@ -242,6 +270,7 @@ socket.on('login_success', (data) => {
 
     myInventory = data.inventory;
     myEquipment = data.equipment || {}; // Salva equipamento
+    loadHotbarState(data.hotbar); // Carrega a hotbar salva
     itemDB = data.itemDB;
     skillDB = data.skillDB;
 
@@ -348,12 +377,14 @@ socket.on('monsters_update', (pack) => {
     const serverIds = new Set();
     pack.forEach(d => {
         serverIds.add(d.id);
-        if (d.hp <= 0 && monsters[d.id]) {
-            FadeManager.fadeOutAndRemove(monsters[d.id], scene);
-            delete monsters[d.id];
-            if(currentTargetId === d.id) { currentTargetId = null; if(targetRing) targetRing.visible = false; }
+        if (d.hp <= 0) {
+            if (monsters[d.id]) {
+                // Atualiza posição final caso ele tenha sido empurrado no último frame
+                monsters[d.id].position.set(d.position.x, d.position.y, d.position.z);
+                performVisualDeath(d.id);
+            }
             return; 
-        }        
+        }     
         if(monsters[d.id]) {
             const mob = monsters[d.id];
             if(mob.userData.targetPos) mob.userData.targetPos.set(d.position.x, d.position.y, d.position.z);
@@ -367,10 +398,16 @@ socket.on('monsters_update', (pack) => {
         }
     });
 
-    const TOLERANCE = 2000; 
+const TOLERANCE = 2000; 
     Object.keys(monsters).forEach(localId => {
         const m = monsters[localId];
+        
+        // SE NÃO VEIO NO PACOTE DO SERVIDOR:
         if(!serverIds.has(localId)) {
+            // Proteção: Se ele está marcado como "Morrendo" (esperando delay), NÃO deleta ainda.
+            // A função performVisualDeath vai deletar ele quando o tempo acabar.
+            if (m.userData.isDying || m.userData.deathScheduled) return;
+
             if (m.userData.lastSeen && (now - m.userData.lastSeen > TOLERANCE)) {
                 scene.remove(m); 
                 delete monsters[localId];
@@ -384,14 +421,7 @@ socket.on('monsters_update', (pack) => {
 });
 
 socket.on('monster_dead', (id) => { 
-    if(currentTargetId === id) {
-        currentTargetId = null; 
-        if(targetRing) targetRing.visible = false;
-    }
-    if(monsters[id]) { 
-        FadeManager.fadeOutAndRemove(monsters[id], scene); 
-        delete monsters[id]; 
-    } 
+    performVisualDeath(id);
 });
 
 socket.on('projectile_fired', (data) => {
@@ -451,27 +481,88 @@ socket.on('chat_message', (data) => {
 });
 
 socket.on('damage_dealt', (d) => {
-    let pos = null;
-    const color = d.isMonster ? '#ffff00' : '#ff0000'; 
+    // Função interna para exibir o dano (agora com suporte a delay)
+    const renderDamage = () => {
+        let pos = null;
+        const color = d.isMonster ? '#ffff00' : '#ff0000'; 
 
-    // Tenta achar o alvo vivo primeiro
-    if (d.targetId === socket.id) {
-        if (myPlayer) pos = myPlayer.position.clone();
-    } else if (monsters[d.targetId]) {
-        pos = monsters[d.targetId].position.clone();
-    } else if (otherPlayers[d.targetId]) {
-        pos = otherPlayers[d.targetId].position.clone();
-    } 
-    // FALLBACK: Se não achou (porque morreu e foi deletado), usa a coordenada do pacote
-    else if (d.x !== undefined && d.z !== undefined) {
-        pos = new THREE.Vector3(d.x, 0, d.z);
+        // Tenta achar o alvo vivo primeiro para pegar a posição atualizada
+        // (Isso é bom pois se o alvo andar enquanto a bola de fogo voa, o dano aparece onde ele ESTÁ, não onde estava)
+        let targetObj = null;
+        if (d.targetId === socket.id) targetObj = myPlayer;
+        else if (monsters[d.targetId]) targetObj = monsters[d.targetId];
+        else if (otherPlayers[d.targetId]) targetObj = otherPlayers[d.targetId];
+
+        if (targetObj) {
+            pos = targetObj.position.clone();
+        } else if (d.x !== undefined && d.z !== undefined) {
+            pos = new THREE.Vector3(d.x, 0, d.z);
+        }
+
+        if (pos) {
+            showDamageNumber(d.damage, pos, color, camera); 
+        }
+    };
+
+    // --- CÁLCULO DE SINCRONIA (DELAY) ---
+    let delay = 0;
+
+    // 1. ATAQUE BÁSICO ou MELEE SKILL
+    // A animação de ataque demora uns ~800ms total, mas o "hit" é no meio (~400ms)
+    if (d.dmgType === 'BASIC' || d.dmgType === 'MELEE') {
+        delay = 400; 
+    }
+    
+    // 2. MAGIA DE ÁREA (METEORO)
+    // O meteoro cai de 15m a 25m/s. Leva aprox 0.6s a 1.0s.
+    // Como agora é uma chuva, colocamos uma média para aparecer junto com a "muvuca".
+    else if (d.dmgType === 'AREA') {
+        delay = 800;
     }
 
-     if (pos) {
-        showDamageNumber(d.damage, pos, color, camera); 
+    // 3. PROJÉTIL (BOLA DE FOGO / FLECHA)
+    // Aqui calculamos a distância real para saber o tempo de voo!
+    else if (d.dmgType === 'PROJECTILE') {
+        let attackerPos = null;
+        
+        // Descobre quem atirou
+        if (d.attackerId === socket.id) attackerPos = myPlayer.position;
+        else if (monsters[d.attackerId]) attackerPos = monsters[d.attackerId].position;
+        else if (otherPlayers[d.attackerId]) attackerPos = otherPlayers[d.attackerId].position;
+
+        // Descobre onde é o alvo
+        let targetPos = null;
+        if (d.x !== undefined) targetPos = new THREE.Vector3(d.x, 0, d.z);
+        
+        if (attackerPos && targetPos) {
+            const dist = attackerPos.distanceTo(targetPos);
+            const speed = 12.0; // Velocidade da Fireball (definida no VFX.js)
+            // Tempo = Distância / Velocidade * 1000 (ms)
+            delay = (dist / speed) * 1000;
+        } else {
+            // Fallback se não achar posições
+            delay = 200;
+        }
+    }
+
+    // --- NOVA LÓGICA DE MORTE SINCRONIZADA ---
+    // Se esse dano matou o alvo, salvamos o delay no objeto dele
+    if (d.newHp <= 0) {
+        let targetObj = monsters[d.targetId]; // Só nos preocupamos com monstros aqui
+        if (targetObj) {
+            // Salva o tempo que ele tem que "fingir que tá vivo" antes de sumir
+            targetObj.userData.deathDelay = delay;
+            targetObj.userData.isDying = true; // Marca para não ser deletado por limpeza de rotina
+        }
+    }    
+
+    // Aplica o atraso calculado
+    if (delay > 0) {
+        setTimeout(renderDamage, delay);
+    } else {
+        renderDamage();
     }
 });
-
 socket.on('play_vfx', (data) => {
     let pos = null;
 
@@ -586,11 +677,33 @@ function initEngine() {
         if (!slotData) return; 
 
         cancelAreaTargeting(); // Cancela o targeting de área se estiver ativo
-        // --- USO DE ITEM ---
+    // --- USO DE ITEM ---
         if (slotData.type === 'ITEM') {
             const inventoryIndex = myInventory.findIndex(slot => slot.id === slotData.id);
-            if (inventoryIndex !== -1) socket.emit('use_item', inventoryIndex);
-        } 
+            
+            if (inventoryIndex !== -1) {
+                const itemConfig = itemDB[slotData.id];
+                
+                // --- CORREÇÃO DO BUG VISUAL ---
+                if (itemConfig && itemConfig.cooldown) {
+                    const now = Date.now();
+                    
+                    // 1. Verifica se já está em cooldown localmente
+                    if (localItemCooldowns[slotData.id] && now < localItemCooldowns[slotData.id]) {
+                        // Se estiver, PARA TUDO. Não reseta animação, não manda socket.
+                        addLogMessage('SISTEMA', 'Item em espera.', 'system');
+                        return; 
+                    }
+
+                    // 2. Se passou, inicia a animação e salva o novo tempo final
+                    startCooldownUI(slotData.id, itemConfig.cooldown, 'ITEM');
+                    localItemCooldowns[slotData.id] = now + itemConfig.cooldown;
+                }
+                // -----------------------------
+
+                socket.emit('use_item', inventoryIndex);
+            }
+        }
         // --- USO DE SKILL ---
         else if (slotData.type === 'SKILL') {
             const skill = skillDB[slotData.id];
@@ -777,6 +890,23 @@ function initEngine() {
         camera.updateProjectionMatrix(); 
         renderer.setSize(window.innerWidth, window.innerHeight); 
     });
+
+    // Lógica de Ping (a cada 2 segundos)
+    setInterval(() => {
+        socket.emit('ping_check', Date.now());
+    }, 2000);
+
+    socket.on('pong_check', (startTime) => {
+        const latency = Date.now() - startTime;
+        const el = document.getElementById('dbg-ping');
+        if (el) {
+            el.textContent = latency;
+            // Cores baseadas na qualidade do ping
+            if (latency < 100) el.style.color = '#00ff00';      // Verde (Bom)
+            else if (latency < 200) el.style.color = '#ffff00'; // Amarelo (Médio)
+            else el.style.color = '#ff0000';                    // Vermelho (Ruim)
+        }
+    });    
 
     animate();
 }
@@ -1266,6 +1396,33 @@ function executePendingSkill(targetPoint) {
     AreaCursor.setVisible(false);
 }
 
+// Função auxiliar para lidar com a morte visual com delay
+function performVisualDeath(id) {
+    const mob = monsters[id];
+    if (!mob) return;
+
+    // Se já agendamos a morte dele, ignora chamadas duplicadas
+    if (mob.userData.deathScheduled) return;
+    mob.userData.deathScheduled = true;
+
+    // Pega o delay calculado no damage_dealt (ou 0 se for morte instantânea)
+    const delay = mob.userData.deathDelay || 0;
+
+    // Remove o anel de target IMEDIATAMENTE (para o jogador não tentar bater num morto)
+    if (currentTargetId === id) {
+        currentTargetId = null;
+        if (targetRing) targetRing.visible = false;
+    }
+
+    // Agenda o Fade Out
+    setTimeout(() => {
+        if (monsters[id]) {
+            FadeManager.fadeOutAndRemove(monsters[id], scene, true);
+            delete monsters[id];
+        }
+    }, delay);
+}
+
 function animate() {
     requestAnimationFrame(animate);
     const now = Date.now(); 
@@ -1304,7 +1461,7 @@ function animate() {
         }
 
         let isMoving = false;
-if(!isChatActive && !isSitting && !isAttacking) { 
+    if(!isChatActive && !isSitting && !isAttacking) { 
             tempVector.set(0, 0, 0);
             if(keys['w']) tempVector.z -= 1; if(keys['s']) tempVector.z += 1;
             if(keys['a']) tempVector.x -= 1; if(keys['d']) tempVector.x += 1;
