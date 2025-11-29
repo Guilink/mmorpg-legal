@@ -1,18 +1,55 @@
-// public/game.js
-
+// Configuração
 import { CONFIG } from './js/Config.js';
-import { 
-    UI, toggleForms, showAuthError, showGameInterface, updateHUD, updateDebug, 
-    addLogMessage, toggleChatFocus, toggleStatusWindow, setupStatusWindowData,
-    refreshStatusWindow, changeAttr, getTempAttributes, updateLoadingBar,
-    renderHotbar, getHotkeyItem, toggleInventory, toggleSkills, startCooldownUI,
-    setHotbarChangeCallback, loadHotbarState
+
+// Gerenciamento de UI
+import {
+    UI,
+    addLogMessage,
+    changeAttr,
+    getTempAttributes,
+    getHotkeyItem,
+    loadHotbarState,
+    refreshStatusWindow,
+    renderHotbar,
+    setHotbarChangeCallback,
+    setupStatusWindowData,
+    showAuthError,
+    showGameInterface,
+    startCooldownUI,
+    toggleChatFocus,
+    toggleForms,
+    toggleInventory,
+    toggleSkills,
+    toggleStatusWindow,
+    updateDebug,
+    updateHUD,
+    updateLoadingBar
 } from './js/UIManager.js';
-import { keys, setupInputs, getIsChatActive, setChatActive } from './js/InputManager.js';
-import { 
-    FadeManager, createChatBubble, showDamageNumber, createTargetIndicator, 
-    createTextSprite, GroundItemManager, ParticleManager, ProjectileManager, AreaCursor
+
+// Gerenciamento de Inputs
+import {
+    keys,
+    setupInputs,
+    getIsChatActive,
+    setChatActive
+} from './js/InputManager.js';
+
+// Efeitos visuais
+import {
+    AreaCursor,
+    createChatBubble,
+    createTargetIndicator,
+    createTextSprite,
+    FadeManager,
+    GroundItemManager,
+    ParticleManager,
+    ProjectileManager,
+    showDamageNumber
 } from './js/VFX.js';
+
+// Áudio
+import { AudioManager } from './js/AudioManager.js';
+
 
 // --- INICIALIZAÇÃO DO SOCKET ---
 const socket = io();
@@ -288,11 +325,11 @@ socket.on('login_success', (data) => {
     }
 });
 
-socket.on('ground_item_spawn', (item) => GroundItemManager.spawn(item, scene, itemDB));
-socket.on('ground_item_remove', (id) => GroundItemManager.remove(id, scene));
-socket.on('ground_item_expire', (id) => GroundItemManager.expire(id, scene));
+    socket.on('ground_item_spawn', (item) => GroundItemManager.spawn(item, scene, itemDB));
+    socket.on('ground_item_remove', (id) => GroundItemManager.remove(id, scene));
+    socket.on('ground_item_expire', (id) => GroundItemManager.expire(id, scene));
 
-socket.on('inventory_update', (data) => {
+    socket.on('inventory_update', (data) => {
     myInventory = data.inventory; 
     myEquipment = data.equipment; // Atualiza equipamento
     UI.updateInventory(data.inventory, data.equipment, itemDB);
@@ -439,6 +476,10 @@ socket.on('projectile_fired', (data) => {
 
     // 3. Cria a flecha
     if (shooter && target) {
+        // --- SOM DE DISPARO ---
+        if (data.type === 'FIREBALL') {
+            AudioManager.play3D('cast_ranged', shooter.position);
+        }        
         // Passe data.type aqui
         ProjectileManager.spawn(scene, shooter, target, data.type); 
     }
@@ -501,6 +542,17 @@ socket.on('damage_dealt', (d) => {
 
         if (pos) {
             showDamageNumber(d.damage, pos, color, camera); 
+            // --- SOM DE IMPACTO (NOVO) ---
+            let soundKey = 'hit_basic'; // Padrão (Soco/Espada)
+            
+            if (d.dmgType === 'PROJECTILE' || d.dmgType === 'AREA') {
+                soundKey = 'hit_magic'; // Magia explodindo
+            } 
+            else if (d.dmgType === 'MELEE') { 
+                soundKey = 'hit_skill'; // Skill física (Golpe Feroz)
+            }
+            
+            AudioManager.play3D(soundKey, pos);
         }
     };
 
@@ -581,13 +633,16 @@ socket.on('play_vfx', (data) => {
 
     if (pos) {
         if (data.type === 'METEOR_EXPLOSION') {
+            AudioManager.play3D('cast_area', new THREE.Vector3(data.x, 0, data.z)); // Toca som de área
             ParticleManager.spawnMeteorShower(scene, pos.x, pos.z);
         } 
         else if (data.type === 'POTION_HP') {
+            AudioManager.play3D('cast_support', pos);  // Toca som de suporte
             // NOVO: Usa o efeito suave
             ParticleManager.spawnHealEffect(scene, pos, 0xff0000); 
         }
         else if (data.type === 'POTION_MP') {
+            AudioManager.play3D('cast_support', pos);  // Toca som de suporte
             // NOVO: Usa o efeito suave azul
             ParticleManager.spawnHealEffect(scene, pos, 0x0000ff);
         }
@@ -595,6 +650,10 @@ socket.on('play_vfx', (data) => {
 });
 
 socket.on('server_stats', (data) => { totalOnline = data.total; });
+
+socket.on('level_up_event', () => {
+    AudioManager.play2D('levelup');
+});
 
 // --- ENGINE & INITIALIZATION ---
 function initEngine() {
@@ -698,6 +757,7 @@ function initEngine() {
                     // 2. Se passou, inicia a animação e salva o novo tempo final
                     startCooldownUI(slotData.id, itemConfig.cooldown, 'ITEM');
                     localItemCooldowns[slotData.id] = now + itemConfig.cooldown;
+                    AudioManager.play2D('potion'); // Toca som de uso de item
                 }
                 // -----------------------------
 
@@ -1215,6 +1275,7 @@ function loadMap(mapConfig, myData, players, mobs) {
             setupAnimations(mesh, gltf.animations);
             myPlayer = mesh;
             scene.add(myPlayer);
+            AudioManager.init(myPlayer);
             checkDone();
         });
     } else if(myPlayer) {

@@ -1,4 +1,4 @@
-// public/js/UIManager.js
+import { AudioManager } from './AudioManager.js';
 
 export const UI = {
     loginScreen: document.getElementById('login-screen'),
@@ -165,6 +165,7 @@ export function setupStatusWindowData(currentAttributes, currentPoints, currentR
 export function toggleStatusWindow() {
     UI.statusWindow.style.display = (UI.statusWindow.style.display === 'none') ? 'block' : 'none';
     if(UI.statusWindow.style.display === 'block') refreshStatusWindow();
+    AudioManager.play2D('ui_click');
 }
 
 export function refreshStatusWindow() {
@@ -218,6 +219,8 @@ export function changeAttr(type, amount) {
         if (tempAttributes[type] > realAttributesRef[type]) { tempAttributes[type]--; tempPoints++; }
     }
     refreshStatusWindow();
+    // --- SOM DE AUMENTO DE ATRIBUTOS ---
+    AudioManager.play2D('ui_stat');
 }
 
 export function getTempAttributes() { return tempAttributes; }
@@ -231,6 +234,8 @@ export function toggleInventory() {
         el.style.display = 'none';
         if (tooltip) tooltip.style.display = 'none';
     }
+    AudioManager.play2D('ui_click');
+
 }
 
 export function toggleSkills() {

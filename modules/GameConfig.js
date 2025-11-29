@@ -39,21 +39,27 @@ const SKILL_DATABASE = {
         damage: 40, animation: 'ATTACK',
         icon: 'skill_fireball.png',
         projectileType: 'FIREBALL',
-        description: "Clássica, quente e irresponsavelmente explosiva. Jogue no inimigo, não em você por favor."
+        description: "Clássica, quente e irresponsavelmente explosiva. Jogue no inimigo, não em você por favor.",
+        soundCast: 'cast_ranged', // Som do disparo (casting_skill.mp3)
+        soundHit: 'hit_magic'          
     },
     'strong_slash': {
         id: 'strong_slash', name: "Golpe Feroz", type: 'MELEE',
         castTime: 0, cooldown: 5000, range: 1.3, manaCost: 5,
         damage: 30, animation: 'ATTACK',
         icon: 'skill_slash.png',
-        description: "Um corte tão forte que até sua arma pensa duas vezes. Ideal para convencer inimigos a repensar escolhas."
+        description: "Um corte tão forte que até sua arma pensa duas vezes. Ideal para convencer inimigos a repensar escolhas.",
+        soundCast: null,          // Ataque físico geralmente não tem som de "cast", só o hit
+        soundHit: 'hit_skill'     // Som do impacto da skill (melee_skill.mp3)
     },
     'heal': {
         id: 'heal', name: "Cura Rápida", type: 'SUPPORT',
         castTime: 1000, cooldown: 4000, range: 10, manaCost: 15,
         effect: { hp: 50 }, animation: 'IDLE',
         icon: 'skill_heal.png',
-        description: "Um encantamento gentil que remenda ferimentos e dignidade, na medida do possível."
+        description: "Um encantamento gentil que remenda ferimentos e dignidade, na medida do possível.",
+        soundCast: 'cast_support', // Som do cast (support_skill.mp3)
+        soundHit: null              // A cura não tem impacto visual, então não há som de hit
     },
     'meteor': {
         id: 'meteor', name: "Chuva de Meteoros", type: 'AREA',
@@ -65,7 +71,9 @@ const SKILL_DATABASE = {
         damage: 80,      
         animation: 'ATTACK', 
         icon: 'skill_meteor.png',
-        description: "Porque jogar pedrinhas é pouco, invoque uma chuva de fogo celestial que atinge tudo e todos dentro da área impactada."
+        description: "Porque jogar pedrinhas é pouco, invoque uma chuva de fogo celestial que atinge tudo e todos dentro da área impactada.",
+        soundCast: 'cast_area',   // Som da invocação (area_skill.mp3)
+        soundHit: 'hit_magic'     // Som das explosões (impact_hit2.mp3)        
     }    
 };
 
