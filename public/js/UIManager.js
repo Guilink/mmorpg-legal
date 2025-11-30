@@ -426,7 +426,7 @@ document.addEventListener('mouseup', (e) => {
     if (dragData.isDragging) {
         stopItemDrag(); 
         
-        // Colocar na Hotbar
+        // A. Colocar na Hotbar
         const hotbarSlot = e.target.closest('.hotkey-slot');
         if (hotbarSlot) {
             const key = parseInt(hotbarSlot.dataset.key) - 1;
@@ -436,11 +436,36 @@ document.addEventListener('mouseup', (e) => {
             if(onHotbarChange) onHotbarChange(hotbarState);
             AudioManager.play2D('ui_click'); 
         }
-        // Jogar no chão (Drop)
+
+        // B. (NOVO) Arrastar para Equipar
+        // CORREÇÃO BUG 2: Verifica se soltou em um slot de equipamento
         else if (dragData.type === 'ITEM') {
-            const rect = UI.inventoryWindow.getBoundingClientRect();
-            const isInside = (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom);
-            if (!isInside && UI.inventoryWindow.style.display !== 'none') openDropModal(dragData.index, dragData.item);
+            const equipSlot = e.target.closest('.equip-doll .item-slot');
+            
+            if (equipSlot) {
+                // O ID do slot é algo como 'eq-weapon', 'eq-head'. Removemos o prefixo.
+                const targetSlotName = equipSlot.id.replace('eq-', '');
+                
+                // Verifica se o item arrastado é do tipo EQUIPAMENTO e se vai no slot certo
+                // Nota: dragData.item possui as props do ITEM_DATABASE (slot, type, etc)
+                if (dragData.item.type === 'equipment' && dragData.item.slot === targetSlotName) {
+                    
+                    // Executa a ação de equipar (que no servidor é 'use_item')
+                    if(window.useItem) window.useItem(dragData.index);
+                    AudioManager.play2D('equip');
+                
+                } else {
+                    // Feedback visual ou sonoro de erro (opcional)
+                    addLogMessage('SISTEMA', 'Slot incorreto para este item.', 'system');
+                }
+            }
+            
+            // C. Jogar no chão (Drop) - Mantém a lógica original
+            else {
+                const rect = UI.inventoryWindow.getBoundingClientRect();
+                const isInside = (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom);
+                if (!isInside && UI.inventoryWindow.style.display !== 'none') openDropModal(dragData.index, dragData.item);
+            }
         }
     } else {
         // 3. Clique Simples sem arrastar

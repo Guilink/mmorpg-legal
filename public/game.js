@@ -597,6 +597,30 @@ function initEngine() {
     scene = new THREE.Scene(); 
     const skyColor = 0x87CEEB; 
     scene.background = new THREE.Color(skyColor);
+
+    // --- INÍCIO DO CÓDIGO DO CHÃO INFINITO E NEBLINA ---
+
+    // 1. Neblina Suave (essencial para o efeito de infinito)
+    // A neblina vai esconder a borda do nosso plano gigante.
+    scene.fog = new THREE.FogExp2(skyColor, 0.04);
+
+        // 2. O Chão Infinito
+        // Criamos um plano gigante que ficará embaixo do seu mapa.
+        const groundGeo = new THREE.PlaneGeometry(2000, 2000); // Tamanho gigante
+        const groundMat = new THREE.MeshBasicMaterial({ 
+            //color: 0x34CAF50, // Cor de grama. AJUSTE SE PRECISAR!
+            color: 0x087912, // Cor de grama. AJUSTE SE PRECISAR!
+            fog: true // IMPORTANTE: Este material PRECISA ser afetado pela neblina
+        });
+        const infiniteGround = new THREE.Mesh(groundGeo, groundMat);
+
+        infiniteGround.rotation.x = -Math.PI / 2; // Deita o plano
+        infiniteGround.position.y = -0.01; // Um pouco abaixo do mapa principal para não "brigar"
+
+        scene.add(infiniteGround);
+
+        // --- FIM DO CÓDIGO DO CHÃO INFINITO E NEBLINA ---
+
     scene.fog = new THREE.Fog(skyColor, 5, 35);
 
     environmentLayer = new THREE.Group();
