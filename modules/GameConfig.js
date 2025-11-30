@@ -171,8 +171,11 @@ const MAP_CONFIG = {
         offset: { x: 0.5, y: 0, z: 0.5 },
         portals: [{ x: -2.10, z: 13.45, radius: 1.0, targetMap: 'floresta', targetX: 0, targetZ: 0 }],
         monsterSpawns: [
-            { type: 'bolota', count: 3, area: { x: 0, z: 0, radius: 8 } },
-            { type: 'morcego', count: 3, area: { x: 0, z: 0, radius: 8 } },
+            { type: 'bolota', count: 2, area: { x: 0, z: 0, radius: 8 } },
+            { type: 'morcego', count: 2, area: { x: 0, z: 0, radius: 8 } },
+            { type: 'verdinho', count: 2, area: { x: 0, z: 0, radius: 8 } },
+            { type: 'cogumelo', count: 2, area: { x: -5, z: 5, radius: 6 } },
+            { type: 'cogumelochefe', count: 1, area: { x: -5, z: 5, radius: 6 } }            
         ] 
     },
     'floresta': {
@@ -180,9 +183,9 @@ const MAP_CONFIG = {
         offset: { x: 0, y: 0, z: 0 },
         portals: [{ x: 0, z: 8.5, radius: 1.0, targetMap: 'vilarejo', targetX: 0, targetZ: 0 }],
         monsterSpawns: [
-            { type: 'verdinho', count: 3, area: { x: 0, z: 0, radius: 8 } },
-            { type: 'cogumelo', count: 3, area: { x: -5, z: 5, radius: 6 } },
-            { type: 'cogumelochefe', count: 1, area: { x: -5, z: 5, radius: 6 } }
+//            { type: 'verdinho', count: 3, area: { x: 0, z: 0, radius: 8 } },
+//            { type: 'cogumelo', count: 3, area: { x: -5, z: 5, radius: 6 } },
+//            { type: 'cogumelochefe', count: 1, area: { x: -5, z: 5, radius: 6 } }
         ]
     }
 };
